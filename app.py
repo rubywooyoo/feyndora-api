@@ -115,6 +115,35 @@ def login():
         "diamonds": user["diamonds"],
         "account_created_at": user["account_created_at"]
     }), 200
+    
+# **獲取用戶資訊 API**
+@app.route('/get_user_info', methods=['GET'])
+def get_user_info():
+    user_id = request.args.get('user_id')
+
+    if not user_id:
+        return jsonify({"error": "缺少 user_id"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT username, total_learning_points, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not user:
+        return jsonify({"error": "用戶不存在"}), 404
+
+    return jsonify({
+        "username": user["username"],
+        "total_learning_points": user["total_learning_points"],
+        "coins": user["coins"],
+        "diamonds": user["diamonds"]
+    }), 200
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
