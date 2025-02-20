@@ -28,13 +28,13 @@ else:
         'database': 'feyndora'
     }
 
+# 建立 MySQL 連線
 def get_db_connection():
     try:
         conn = mysql.connector.connect(**db_config)
-        print("✅ 資料庫連線成功！")  # ✅ 新增這行 Debug 訊息
         return conn
     except Error as e:
-        print(f"❌ 資料庫連接錯誤: {e}")  # ❌ 印出詳細錯誤
+        print(f"資料庫連接錯誤: {e}")
         return None
         
 @app.route('/')
