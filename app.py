@@ -39,7 +39,7 @@ def get_db_connection():
 
 @app.route('/')
 def index():
-    return "Flask 伺服器運行中!"
+    return "Flask 伺服器運行中拉拉拉!"
 
 # **註冊 API**
 @app.route('/register', methods=['POST'])
