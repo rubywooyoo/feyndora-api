@@ -36,10 +36,29 @@ def get_db_connection():
     except Error as e:
         print(f"資料庫連接錯誤: {e}")
         return None
-        
+
 @app.route('/')
 def index():
     return "Flask 伺服器運行中拉拉拉!"
+
+# **用戶資料 API（獲取最新數據）**
+@app.route('/user/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT user_id, username, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not user:
+        return jsonify({"error": "找不到用戶"}), 404
+
+    return jsonify(user), 200
 
 # **註冊 API**
 @app.route('/register', methods=['POST'])
@@ -110,11 +129,9 @@ def login():
         "message": "登入成功",
         "user_id": user["user_id"],
         "username": user["username"],
-        "total_learning_points": user["total_learning_points"],
         "coins": user["coins"],
-        "diamonds": user["diamonds"],
-        "account_created_at": user["account_created_at"]
+        "diamonds": user["diamonds"]
     }), 200
-    
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
