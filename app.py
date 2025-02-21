@@ -6,6 +6,7 @@ import os
 from urllib.parse import urlparse
 
 app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False  # ✅ 確保 JSON 使用 UTF-8，支援中文輸出
 
 # 讀取 Render 提供的 DATABASE_URL
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -31,7 +32,7 @@ else:
 # 建立 MySQL 連線
 def get_db_connection():
     try:
-        conn = mysql.connector.connect(**db_config)
+        conn = mysql.connector.connect(**db_config, charset='utf8mb4')  # ✅ 設定 utf8mb4，支援中文
         return conn
     except Error as e:
         print(f"資料庫連接錯誤: {e}")
@@ -39,7 +40,7 @@ def get_db_connection():
 
 @app.route('/')
 def index():
-    return "Flask 伺服器運行中拉拉拉!"
+    return "Flask 伺服器運行中!"
 
 # **用戶資料 API（獲取最新數據）**
 @app.route('/user/<int:user_id>', methods=['GET'])
@@ -87,10 +88,10 @@ def register():
     if cursor.fetchone():
         return jsonify({"error": "該 Email 已被註冊"}), 400
 
-    # 加密密碼
+    # **加密密碼**
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-    # 插入新用戶
+    # **插入新用戶**
     query = """INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, account_created_at) 
                VALUES (%s, %s, %s, %s, %s, %s, NOW())"""
     cursor.execute(query, (username, email, hashed_password.decode('utf-8'), 0, 0, 0))
@@ -121,7 +122,7 @@ def login():
     cursor.close()
     conn.close()
 
-    # 確保使用 bcrypt 驗證密碼
+    # **確保使用 bcrypt 驗證密碼**
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
         return jsonify({"error": "帳號或密碼錯誤"}), 401
 
