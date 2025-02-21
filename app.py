@@ -61,6 +61,57 @@ def get_user(user_id):
 
     return jsonify(user), 200
 
+# **獲取使用者的所有課程**
+@app.route('/courses/<int:user_id>', methods=['GET'])
+def get_courses(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT course_name, created_at, progress 
+        FROM Courses 
+        WHERE user_id = %s 
+        ORDER BY created_at DESC
+    """, (user_id,))
+    
+    courses = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(courses), 200
+
+# **搜尋課程 API**
+@app.route('/search_courses', methods=['GET'])
+def search_courses():
+    query = request.args.get('query', '').strip()
+    
+    if not query:
+        return jsonify({"error": "缺少搜尋關鍵字"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT course_name, created_at, progress 
+        FROM Courses 
+        WHERE course_name LIKE %s 
+        ORDER BY created_at DESC
+    """, (f"%{query}%",))
+
+    courses = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(courses), 200
+
+
+
 # **註冊 API**
 @app.route('/register', methods=['POST'])
 def register():
