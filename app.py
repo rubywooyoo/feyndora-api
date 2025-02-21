@@ -40,7 +40,7 @@ def get_db_connection():
 
 @app.route('/')
 def index():
-    return "Flask 伺服器運行中!"
+    return "Flask 伺服器運行中拉拉拉拉!"
 
 # **用戶資料 API（獲取最新數據）**
 @app.route('/user/<int:user_id>', methods=['GET'])
