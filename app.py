@@ -216,7 +216,7 @@ def delete_course(course_id):
     cursor.close()
     conn.close()
 
-    return jsonify({"message": "課程已刪除"}), 200)
+    return jsonify({"message": "課程已刪除"}), 200
 
 ### **📌 5. 新增課程 `/add_course`**
 @app.route('/add_course', methods=['POST'])
