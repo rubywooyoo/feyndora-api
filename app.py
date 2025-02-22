@@ -199,6 +199,127 @@ def login():
     cursor.close()
     conn.close()
 
+### **📌 1. 獲取使用者的所有課程 `/courses/<user_id>`**
+@app.route('/courses/<int:user_id>', methods=['GET'])
+def get_courses(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT course_id, course_name, created_at, progress, is_favorite
+        FROM Courses
+        WHERE user_id = %s
+        ORDER BY is_favorite DESC, created_at DESC
+    """, (user_id,))
+
+    courses = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(courses), 200
+
+### **📌 2. 搜尋使用者的課程 `/search_courses/<user_id>?query=xxx`**
+@app.route('/search_courses/<int:user_id>', methods=['GET'])
+def search_courses(user_id):
+    query = request.args.get('query', '').strip()
+    
+    if not query:
+        return jsonify({"error": "缺少搜尋關鍵字"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT course_id, course_name, created_at, progress, is_favorite
+        FROM Courses 
+        WHERE user_id = %s AND course_name LIKE %s 
+        ORDER BY is_favorite DESC, created_at DESC
+    """, (user_id, f"%{query}%"))
+
+    courses = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify(courses), 200
+
+### **📌 3. 切換課程收藏狀態 `/toggle_favorite/<course_id>`**
+@app.route('/toggle_favorite/<int:course_id>', methods=['POST'])
+def toggle_favorite(course_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+    
+    # 先檢查當前收藏狀態
+    cursor.execute("SELECT is_favorite FROM Courses WHERE course_id = %s", (course_id,))
+    course = cursor.fetchone()
+
+    if not course:
+        return jsonify({"error": "找不到課程"}), 404
+
+    new_favorite_status = not course[0]  # 反轉收藏狀態
+    cursor.execute("UPDATE Courses SET is_favorite = %s WHERE course_id = %s", (new_favorite_status, course_id))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程收藏狀態已更新", "is_favorite": new_favorite_status}), 200
+
+### **📌 4. 刪除課程 `/delete_course/<course_id>`**
+@app.route('/delete_course/<int:course_id>', methods=['DELETE'])
+def delete_course(course_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+    
+    # 檢查課程是否存在
+    cursor.execute("SELECT * FROM Courses WHERE course_id = %s", (course_id,))
+    if not cursor.fetchone():
+        return jsonify({"error": "找不到課程"}), 404
+
+    cursor.execute("DELETE FROM Courses WHERE course_id = %s", (course_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程已刪除"}), 200)
+
+### **📌 5. 新增課程 `/add_course`**
+@app.route('/add_course', methods=['POST'])
+def add_course():
+    data = request.json
+    user_id = data.get("user_id")
+    course_name = data.get("course_name")
+
+    if not user_id or not course_name:
+        return jsonify({"error": "缺少必要參數"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+
+    query = """INSERT INTO Courses (user_id, course_name, progress, is_favorite, created_at)
+               VALUES (%s, %s, %s, %s, NOW())"""
+    cursor.execute(query, (user_id, course_name, 0, False))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程已新增"}), 201
     # **確保使用 bcrypt 驗證密碼**
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
         return jsonify({"error": "帳號或密碼錯誤"}), 401
