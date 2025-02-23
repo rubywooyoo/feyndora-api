@@ -61,6 +61,89 @@ def get_user(user_id):
 
     return jsonify(user), 200
 
+# **註冊 API**
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not username or not email or not password:
+        return jsonify({"error": "缺少必要欄位"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+
+    # **檢查 Username 是否已存在**
+    cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
+    if cursor.fetchone():
+        return jsonify({"error": "該使用者名稱已被使用"}), 400
+
+    # **檢查 Email 是否已存在**
+    cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+    if cursor.fetchone():
+        return jsonify({"error": "該 Email 已被註冊"}), 400
+
+    # **加密密碼**
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    # **插入新用戶**
+    query = """INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, account_created_at) 
+               VALUES (%s, %s, %s, %s, %s, %s, NOW())"""
+    cursor.execute(query, (username, email, hashed_password.decode('utf-8'), 0, 0, 0))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "註冊成功"}), 201
+
+# **✅ 修正後的登入 API**
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({"error": "缺少必要欄位"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+
+    # **檢查用戶是否存在**
+    if not user:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "帳號或密碼錯誤"}), 401
+
+    # **檢查密碼是否正確**
+    if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "帳號或密碼錯誤"}), 401
+
+    # **成功登入，返回用戶數據**
+    response = {
+        "message": "登入成功",
+        "user_id": user["user_id"],
+        "username": user["username"],
+        "coins": user["coins"],
+        "diamonds": user["diamonds"]
+    }
+
+    cursor.close()
+    conn.close()
+    return jsonify(response), 200
+
 # **📌 獲取使用者的所有課程 `/courses/<user_id>`**
 @app.route('/courses/<int:user_id>', methods=['GET'])
 def get_courses(user_id):
