@@ -40,9 +40,28 @@ def get_db_connection():
 
 @app.route('/')
 def index():
-    return "Flask 伺服器運行中!"
+    return "Flask 伺服器運行中拉拉拉拉!"
 
-# **📌 註冊 API**
+# **用戶資料 API（獲取最新數據）**
+@app.route('/user/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT user_id, username, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not user:
+        return jsonify({"error": "找不到用戶"}), 404
+
+    return jsonify(user), 200
+
+# **註冊 API**
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -59,12 +78,15 @@ def register():
 
     cursor = conn.cursor()
 
-    # **檢查 Username & Email 是否已存在**
-    cursor.execute("SELECT * FROM Users WHERE username = %s OR email = %s", (username, email))
+    # **檢查 Username 是否已存在**
+    cursor.execute("SELECT * FROM Users WHERE username = %s", (username,))
     if cursor.fetchone():
-        cursor.close()
-        conn.close()
-        return jsonify({"error": "使用者名稱或 Email 已被使用"}), 400
+        return jsonify({"error": "該使用者名稱已被使用"}), 400
+
+    # **檢查 Email 是否已存在**
+    cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
+    if cursor.fetchone():
+        return jsonify({"error": "該 Email 已被註冊"}), 400
 
     # **加密密碼**
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -79,7 +101,7 @@ def register():
     conn.close()
     return jsonify({"message": "註冊成功"}), 201
 
-# **📌 登入 API**
+# **✅ 修正後的登入 API**
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -97,31 +119,30 @@ def login():
     cursor.execute("SELECT * FROM Users WHERE email = %s", (email,))
     user = cursor.fetchone()
 
+    # **檢查用戶是否存在**
     if not user:
         cursor.close()
         conn.close()
         return jsonify({"error": "帳號或密碼錯誤"}), 401
 
-    try:
-        if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-            cursor.close()
-            conn.close()
-            return jsonify({"error": "帳號或密碼錯誤"}), 401
-    except Exception as e:
+    # **檢查密碼是否正確**
+    if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
         cursor.close()
         conn.close()
-        return jsonify({"error": f"密碼驗證失敗: {e}"}), 500
+        return jsonify({"error": "帳號或密碼錯誤"}), 401
 
-    cursor.close()
-    conn.close()
-
-    return jsonify({
+    # **成功登入，返回用戶數據**
+    response = {
         "message": "登入成功",
         "user_id": user["user_id"],
         "username": user["username"],
         "coins": user["coins"],
         "diamonds": user["diamonds"]
-    }), 200
+    }
+
+    cursor.close()
+    conn.close()
+    return jsonify(response), 200
 
 # **📌 獲取使用者的所有課程**
 @app.route('/courses/<int:user_id>', methods=['GET'])
@@ -145,7 +166,7 @@ def get_courses(user_id):
 
     return jsonify(courses), 200
 
-# **📌 搜尋使用者的課程**
+# **📌 搜尋使用者課程**
 @app.route('/search_courses/<int:user_id>', methods=['GET'])
 def search_courses(user_id):
     query = request.args.get('query', '').strip()
@@ -180,14 +201,13 @@ def toggle_favorite(course_id):
         return jsonify({"error": "資料庫連接失敗"}), 500
 
     cursor = conn.cursor()
-    
     cursor.execute("SELECT is_favorite FROM Courses WHERE course_id = %s", (course_id,))
     course = cursor.fetchone()
 
     if not course:
         return jsonify({"error": "找不到課程"}), 404
 
-    new_favorite_status = 1 if course[0] == 0 else 0
+    new_favorite_status = not course[0]
     cursor.execute("UPDATE Courses SET is_favorite = %s WHERE course_id = %s", (new_favorite_status, course_id))
     conn.commit()
 
@@ -211,31 +231,6 @@ def delete_course(course_id):
     conn.close()
 
     return jsonify({"message": "課程已刪除"}), 200
-
-# **📌 新增課程**
-@app.route('/add_course', methods=['POST'])
-def add_course():
-    data = request.json
-    user_id = data.get("user_id")
-    course_name = data.get("course_name")
-
-    if not user_id or not course_name:
-        return jsonify({"error": "缺少必要參數"}), 400
-
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({"error": "資料庫連接失敗"}), 500
-
-    cursor = conn.cursor()
-    query = """INSERT INTO Courses (user_id, course_name, progress, is_favorite, created_at)
-               VALUES (%s, %s, %s, %s, NOW())"""
-    cursor.execute(query, (user_id, course_name, 0, 0))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return jsonify({"message": "課程已新增"}), 201
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
