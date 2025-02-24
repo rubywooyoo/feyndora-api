@@ -50,7 +50,7 @@ def get_user(user_id):
         return jsonify({"error": "資料庫連接失敗"}), 500
 
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id, username, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT user_id, username, email, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
     user = cursor.fetchone()
 
     cursor.close()
