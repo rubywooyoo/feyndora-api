@@ -50,7 +50,7 @@ def get_user(user_id):
         return jsonify({"error": "資料庫連接失敗"}), 500
 
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id, username, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT user_id, username, email, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
     user = cursor.fetchone()
 
     cursor.close()
@@ -60,6 +60,43 @@ def get_user(user_id):
         return jsonify({"error": "找不到用戶"}), 404
 
     return jsonify(user), 200
+
+# **📌 更新用戶暱稱**
+@app.route('/update_nickname/<int:user_id>', methods=['PUT'])
+def update_nickname(user_id):
+    data = request.json
+    new_nickname = data.get('nickname')
+
+    if not new_nickname:
+        return jsonify({"error": "暱稱不能為空"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+    cursor.execute("UPDATE Users SET username = %s WHERE user_id = %s", (new_nickname, user_id))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "暱稱更新成功"}), 200
+
+
+# **📌 刪除帳號**
+@app.route('/delete_account/<int:user_id>', methods=['DELETE'])
+def delete_account(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM Users WHERE user_id = %s", (user_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "帳號已刪除"}), 200
 
 # **註冊 API**
 @app.route('/register', methods=['POST'])
