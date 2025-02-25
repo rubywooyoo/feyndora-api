@@ -189,6 +189,24 @@ def delete_user(user_id):
 
     return jsonify({"message": "帳號已刪除"}), 200
 
+# **📌 更新VR是否ready
+@app.route('/start_vr_lesson/<int:course_id>', methods=['POST'])
+def start_vr_lesson(course_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+
+    # 更新課程的 `is_vr_ready` 狀態
+    cursor.execute("UPDATE Courses SET is_vr_ready = TRUE WHERE course_id = %s", (course_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程已標記為 VR 準備就緒"}), 200
+
 # **📌 獲取使用者的所有課程 `/courses/<user_id>`**
 @app.route('/courses/<int:user_id>', methods=['GET'])
 def get_courses(user_id):
@@ -198,7 +216,7 @@ def get_courses(user_id):
 
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT course_id, course_name, created_at, progress, is_favorite, file_type
+        SELECT course_id, course_name, created_at, progress, is_favorite, is_vr_ready, file_type
         FROM Courses
         WHERE user_id = %s
         ORDER BY is_favorite DESC, created_at DESC
