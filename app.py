@@ -101,6 +101,29 @@ def register():
     conn.close()
     return jsonify({"message": "註冊成功"}), 201
 
+
+# **✅ 繼續上課 API**
+@app.route('/continue_course', methods=['POST'])
+def continue_course():
+    data = request.json
+    course_id = data.get("course_id")
+
+    if not course_id:
+        return jsonify({"error": "缺少 course_id"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+    cursor.execute("UPDATE Courses SET is_vr_ready = TRUE, vr_started_at = NOW() WHERE course_id = %s", (course_id,))
+    conn.commit()
+    
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程已開始 VR"}), 200
+
 # **✅ 修正後的登入 API**
 @app.route('/login', methods=['POST'])
 def login():
