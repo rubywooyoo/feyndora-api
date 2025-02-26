@@ -198,14 +198,25 @@ def start_vr_lesson(course_id):
 
     cursor = conn.cursor()
 
-    # 更新課程的 `is_vr_ready` 狀態
-    cursor.execute("UPDATE Courses SET is_vr_ready = TRUE WHERE course_id = %s", (course_id,))
+    # **檢查課程是否存在**
+    cursor.execute("SELECT * FROM Courses WHERE course_id = %s", (course_id,))
+    course = cursor.fetchone()
+
+    if not course:
+        return jsonify({"error": "找不到課程"}), 404
+
+    # **更新 `is_vr_ready` 並記錄開始時間**
+    cursor.execute("""
+        UPDATE Courses 
+        SET is_vr_ready = TRUE, vr_started_at = NOW() 
+        WHERE course_id = %s
+    """, (course_id,))
     conn.commit()
 
     cursor.close()
     conn.close()
 
-    return jsonify({"message": "課程已標記為 VR 準備就緒"}), 200
+    return jsonify({"message": "課程已標記為 VR 準備就緒", "vr_started_at": "NOW()"}), 200
 
 # **📌 獲取使用者的所有課程 `/courses/<user_id>`**
 @app.route('/courses/<int:user_id>', methods=['GET'])
