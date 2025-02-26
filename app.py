@@ -227,7 +227,7 @@ def get_courses(user_id):
 
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT course_id, course_name, created_at, progress, is_favorite, is_vr_ready, file_type
+        SELECT course_id, course_name, created_at, progress, is_favorite, is_vr_ready, vr_started_at, file_type
         FROM Courses
         WHERE user_id = %s
         ORDER BY is_favorite DESC, created_at DESC
