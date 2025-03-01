@@ -50,7 +50,7 @@ def get_user(user_id):
         return jsonify({"error": "資料庫連接失敗"}), 500
 
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id, username, email, coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT user_id, username, email, coins, diamonds, avatar_id FROM Users WHERE user_id = %s", (user_id,))
     user = cursor.fetchone()
 
     cursor.close()
@@ -92,15 +92,37 @@ def register():
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
     # **插入新用戶**
-    query = """INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, account_created_at) 
+    query = """INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, avatar_id, account_created_at) 
                VALUES (%s, %s, %s, %s, %s, %s, NOW())"""
-    cursor.execute(query, (username, email, hashed_password.decode('utf-8'), 0, 0, 0))
+    cursor.execute(query, (username, email, hashed_password.decode('utf-8'), 0, 0, 0,1)) # 預設avatar_id=1
     conn.commit()
 
     cursor.close()
     conn.close()
     return jsonify({"message": "註冊成功"}), 201
+    
+# **✅ 更新頭貼 API**
+@app.route('/update_avatar/<int:user_id>', methods=['PUT'])
+def update_avatar(user_id):
+    data = request.json
+    avatar_id = data.get('avatar_id')
 
+    if not avatar_id:
+        return jsonify({"error": "缺少 avatar_id"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "資料庫連接失敗"}), 500
+
+    cursor = conn.cursor()
+
+    cursor.execute("UPDATE Users SET avatar_id = %s WHERE user_id = %s", (avatar_id, user_id))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "頭像更新成功"}), 200
 
 # **✅ 繼續上課 API**
 @app.route('/continue_course', methods=['POST'])
@@ -160,7 +182,8 @@ def login():
         "user_id": user["user_id"],
         "username": user["username"],
         "coins": user["coins"],
-        "diamonds": user["diamonds"]
+        "diamonds": user["diamonds"],
+        "avatar_id": user["avatar_id"]
     }
 
     cursor.close()
