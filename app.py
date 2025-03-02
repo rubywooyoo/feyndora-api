@@ -86,6 +86,20 @@ def login():
         "avatar_id": user['avatar_id']
     }), 200
 
+# ✅ 取得用戶資料
+@app.route('/user/<int:user_id>', methods=['GET'])
+def get_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM Users WHERE user_id=%s", (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not user:
+        return jsonify({"error": "找不到用戶"}), 404
+    return jsonify(user), 200
+
+
 # ✅ current_stage（每次呼叫都即時計算進度+更新progress+回傳最新current_stage）
 @app.route('/current_stage/<int:user_id>', methods=['GET'])
 def get_current_stage(user_id):
@@ -198,6 +212,21 @@ def add_course():
 
     conn.commit()
     return jsonify({"message": "課程已新增"}), 201
+
+# ✅ 搜尋課程
+@app.route('/search_courses/<int:user_id>', methods=['GET'])
+def search_courses(user_id):
+    query = f"%{request.args.get('query', '').strip()}%"
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT * FROM Courses WHERE user_id=%s AND course_name LIKE %s ORDER BY created_at DESC
+    """, (user_id, query))
+    courses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(courses), 200
+
 
 # ✅ 刪除課程
 @app.route('/delete_course/<int:course_id>', methods=['DELETE'])
