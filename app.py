@@ -16,7 +16,7 @@ if DATABASE_URL:
         'host': url.hostname,
         'user': url.username,
         'password': url.password,
-        'database': url.path[1:], 
+        'database': url.path[1:],
         'port': url.port
     }
 else:
@@ -86,7 +86,7 @@ def login():
         "avatar_id": user['avatar_id']
     }), 200
 
-# ✅ 查詢當前課程狀態 (current_stage)
+# ✅ 強化版 current_stage
 @app.route('/current_stage/<int:user_id>', methods=['GET'])
 def get_current_stage(user_id):
     conn = get_db_connection()
@@ -95,18 +95,29 @@ def get_current_stage(user_id):
     cursor.execute("""
         SELECT course_id, course_name, current_stage, progress, progress_one_to_one, progress_classroom
         FROM Courses
-        WHERE user_id = %s AND is_vr_ready = TRUE
-        ORDER BY vr_started_at DESC
+        WHERE user_id = %s AND is_vr_ready = 1
+        ORDER BY created_at DESC
         LIMIT 1
     """, (user_id,))
 
     course = cursor.fetchone()
+
     if not course:
-        return jsonify({"error": "目前沒有準備好的課程"}), 404
+        return jsonify({
+            "hasReadyCourse": False
+        }), 200
 
-    return jsonify(course), 200
+    return jsonify({
+        "hasReadyCourse": True,
+        "course_id": course['course_id'],
+        "course_name": course['course_name'],
+        "current_stage": course['current_stage'],
+        "progress": course['progress'],
+        "progress_one_to_one": course['progress_one_to_one'],
+        "progress_classroom": course['progress_classroom']
+    }), 200
 
-# ✅ 課程相關API
+# ✅ 課程列表
 @app.route('/courses/<int:user_id>', methods=['GET'])
 def get_courses(user_id):
     conn = get_db_connection()
@@ -114,18 +125,22 @@ def get_courses(user_id):
     cursor.execute("SELECT * FROM Courses WHERE user_id=%s ORDER BY created_at DESC", (user_id,))
     return jsonify(cursor.fetchall()), 200
 
+# ✅ 新增課程
 @app.route('/add_course', methods=['POST'])
 def add_course():
     data = request.json
     conn = get_db_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
-        INSERT INTO Courses (user_id, course_name, progress, progress_one_to_one, progress_classroom, is_favorite, file_type, created_at)
-        VALUES (%s, %s, 0, 0, 0, FALSE, %s, NOW())
+        INSERT INTO Courses (user_id, course_name, progress, progress_one_to_one, progress_classroom, current_stage, is_favorite, is_vr_ready, file_type, created_at)
+        VALUES (%s, %s, 0, 0, 0, 'one_to_one', FALSE, 0, %s, NOW())
     """, (data['user_id'], data['course_name'], data['file_type']))
+
     conn.commit()
     return jsonify({"message": "課程已新增"}), 201
 
+# ✅ 刪除課程
 @app.route('/delete_course/<int:course_id>', methods=['DELETE'])
 def delete_course(course_id):
     conn = get_db_connection()
@@ -134,6 +149,7 @@ def delete_course(course_id):
     conn.commit()
     return jsonify({"message": "課程已刪除"}), 200
 
+# ✅ 切換收藏
 @app.route('/toggle_favorite/<int:course_id>', methods=['POST'])
 def toggle_favorite(course_id):
     conn = get_db_connection()
@@ -154,6 +170,7 @@ def update_progress():
         SET progress = %s, progress_one_to_one = %s, progress_classroom = %s, current_stage = %s
         WHERE course_id = %s
     """, (data['progress'], data['progress_one_to_one'], data['progress_classroom'], data['current_stage'], data['course_id']))
+
     conn.commit()
     return jsonify({"message": "進度更新成功"}), 200
 
