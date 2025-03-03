@@ -268,9 +268,18 @@ def continue_course():
     data = request.json
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE Courses SET vr_started_at=NOW() WHERE course_id=%s", (data['course_id'],))
+
+    # 加上 is_vr_ready = TRUE
+    cursor.execute("""
+        UPDATE Courses
+        SET is_vr_ready = TRUE, vr_started_at = NOW()
+        WHERE course_id = %s
+    """, (data['course_id'],))
+
     conn.commit()
-    return jsonify({"message": "課程VR開始"}), 200
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200
 
 # ✅ 更新暱稱與頭像
 @app.route('/update_nickname/<int:user_id>', methods=['PUT'])
