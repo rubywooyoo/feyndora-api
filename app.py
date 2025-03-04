@@ -86,6 +86,133 @@ def login():
         "avatar_id": user['avatar_id']
     }), 200
 
+# ✅ 取得日排名
+@app.route('/daily_rankings', methods=['GET'])
+def daily_rankings():
+    query_date = request.args.get('date', date.today().isoformat())
+    user_id = request.args.get('user_id', type=int)
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1️⃣ 查詢前10名
+    cursor.execute("""
+        SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
+        FROM (
+            SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
+                   RANK() OVER (ORDER BY L.daily_points DESC) AS rank
+            FROM LearningPointsLog L
+            JOIN Users U ON L.user_id = U.user_id
+            WHERE L.date = %s
+        ) t
+        ORDER BY t.rank
+        LIMIT 10
+    """, (query_date,))
+    top10 = cursor.fetchall()
+
+    # 2️⃣ 查詢用戶自己的名次（不管他有沒有進前10名，都要回傳）
+    user_rank = None
+    if user_id:
+        cursor.execute("""
+            SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
+            FROM (
+                SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
+                       RANK() OVER (ORDER BY L.daily_points DESC) AS rank
+                FROM LearningPointsLog L
+                JOIN Users U ON L.user_id = U.user_id
+                WHERE L.date = %s
+            ) t
+            WHERE t.user_id = %s
+        """, (query_date, user_id))
+        user_rank = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "date": query_date,
+        "rankings": top10,
+        "userRank": user_rank
+    })
+
+# ✅ 取得週排名
+@app.route('/weekly_rankings', methods=['GET'])
+def weekly_rankings():
+    user_id = request.args.get('user_id', type=int)
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1️⃣ 查詢前10名
+    cursor.execute("""
+        SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
+        FROM (
+            SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
+                   RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
+            FROM LearningPointsLog L
+            JOIN Users U ON L.user_id = U.user_id
+            WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
+            GROUP BY U.user_id, U.username, U.avatar_id
+        ) t
+        ORDER BY t.rank
+        LIMIT 10
+    """)
+    top10 = cursor.fetchall()
+
+    # 2️⃣ 查詢用戶自己的名次（不管他有沒有進前10名，都要回傳）
+    user_rank = None
+    if user_id:
+        cursor.execute("""
+            SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
+            FROM (
+                SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
+                       RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
+                FROM LearningPointsLog L
+                JOIN Users U ON L.user_id = U.user_id
+                WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
+                GROUP BY U.user_id, U.username, U.avatar_id
+            ) t
+            WHERE t.user_id = %s
+        """, (user_id,))
+        user_rank = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "rankings": top10,
+        "userRank": user_rank
+    })
+
+# ✅ 更新學習點數（留給VR端呼叫）
+@app.route('/update_learning_points', methods=['POST'])
+def update_learning_points():
+    data = request.json
+    user_id = data['user_id']
+    points_to_add = data['points']
+    today = date.today().isoformat()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 先確認今天是否已有紀錄
+    cursor.execute("SELECT daily_points FROM LearningPointsLog WHERE user_id=%s AND date=%s", (user_id, today))
+    row = cursor.fetchone()
+
+    if row:
+        # 更新今天的累計點數
+        new_points = row[0] + points_to_add
+        cursor.execute("UPDATE LearningPointsLog SET daily_points=%s WHERE user_id=%s AND date=%s", (new_points, user_id, today))
+    else:
+        # 新增今日點數紀錄
+        cursor.execute("INSERT INTO LearningPointsLog (user_id, date, daily_points) VALUES (%s, %s, %s)", (user_id, today, points_to_add))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "學習點數更新完成"})
+
 # ✅ 取得用戶資料
 @app.route('/user/<int:user_id>', methods=['GET'])
 def get_user(user_id):
@@ -99,106 +226,6 @@ def get_user(user_id):
         return jsonify({"error": "找不到用戶"}), 404
     return jsonify(user), 200
 
-# 日排名 API
-@app.route('/daily_rankings', methods=['GET'])
-def daily_rankings():
-    # 取得查詢日期，若無則使用今天
-    query_date = request.args.get('date')
-    if not query_date:
-        query_date = date.today().isoformat()
-    # 如果提供 user_id 則回傳該用戶的排名
-    user_id = request.args.get('user_id')
-
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # 查詢前10名日排名
-    query = """
-        SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
-        FROM (
-            SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                   RANK() OVER (ORDER BY L.daily_points DESC) as rank
-            FROM LearningPointsLog L 
-            JOIN Users U ON L.user_id = U.user_id
-            WHERE L.date = %s
-        ) t
-        ORDER BY t.rank
-        LIMIT 10;
-    """
-    cursor.execute(query, (query_date,))
-    rankings = cursor.fetchall()
-
-    user_rank = None
-    if user_id:
-        query_user = """
-            SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
-            FROM (
-                SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                       RANK() OVER (ORDER BY L.daily_points DESC) as rank
-                FROM LearningPointsLog L 
-                JOIN Users U ON L.user_id = U.user_id
-                WHERE L.date = %s
-            ) t
-            WHERE t.user_id = %s;
-        """
-        cursor.execute(query_user, (query_date, user_id))
-        user_rank = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-    return jsonify({
-        "date": query_date,
-        "rankings": rankings,
-        "userRank": user_rank
-    }), 200
-
-# 週排名 API
-@app.route('/weekly_rankings', methods=['GET'])
-def weekly_rankings():
-    user_id = request.args.get('user_id')
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # 使用 MySQL 內建的 YEARWEEK 函數 (週一作為每週第一天)
-    query = """
-        SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
-        FROM (
-            SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) as weekly_points,
-                   RANK() OVER (ORDER BY SUM(L.daily_points) DESC) as rank
-            FROM LearningPointsLog L 
-            JOIN Users U ON L.user_id = U.user_id
-            WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
-            GROUP BY U.user_id, U.username, U.avatar_id
-        ) t
-        ORDER BY t.rank
-        LIMIT 10;
-    """
-    cursor.execute(query)
-    rankings = cursor.fetchall()
-
-    user_rank = None
-    if user_id:
-        query_user = """
-            SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
-            FROM (
-                SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) as weekly_points,
-                       RANK() OVER (ORDER BY SUM(L.daily_points) DESC) as rank
-                FROM LearningPointsLog L 
-                JOIN Users U ON L.user_id = U.user_id
-                WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
-                GROUP BY U.user_id, U.username, U.avatar_id
-            ) t
-            WHERE t.user_id = %s;
-        """
-        cursor.execute(query_user, (user_id,))
-        user_rank = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-    return jsonify({
-        "rankings": rankings,
-        "userRank": user_rank
-    }), 200
 
 # ✅ current_stage（每次呼叫都即時計算進度+更新progress+回傳最新current_stage）
 @app.route('/current_stage/<int:user_id>', methods=['GET'])
