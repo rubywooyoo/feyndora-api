@@ -207,6 +207,10 @@ def update_learning_points():
         # 新增今日點數紀錄
         cursor.execute("INSERT INTO LearningPointsLog (user_id, date, daily_points) VALUES (%s, %s, %s)", (user_id, today, points_to_add))
 
+    # 2️⃣ 同時更新 Users 表的 total_learning_points（生涯總積分）
+    cursor.execute("UPDATE Users SET total_learning_points = total_learning_points + %s WHERE user_id = %s", 
+                   (points_to_add, user_id))
+
     conn.commit()
     cursor.close()
     conn.close()
