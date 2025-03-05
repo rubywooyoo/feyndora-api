@@ -35,6 +35,11 @@ def get_db_connection():
         print(f"資料庫連接錯誤: {e}")
         return None
 
+# 取得台灣現在時間
+def get_taiwan_now():
+    taiwan = pytz.timezone('Asia/Taipei')
+    return datetime.now(taiwan)
+
 @app.route('/')
 def index():
     return "Flask 伺服器運行中!"
@@ -86,10 +91,11 @@ def login():
         "avatar_id": user['avatar_id']
     }), 200
 
-# ✅ 取得日排名
+# ✅ 取得日排名 (強制台灣時區)
 @app.route('/daily_rankings', methods=['GET'])
 def daily_rankings():
-    query_date = request.args.get('date', date.today().isoformat())
+    now_taiwan = get_taiwan_now()
+    query_date = request.args.get('date', now_taiwan.date().isoformat())
     user_id = request.args.get('user_id', type=int)
 
     conn = get_db_connection()
@@ -110,7 +116,7 @@ def daily_rankings():
     """, (query_date,))
     top10 = cursor.fetchall()
 
-    # 2️⃣ 查詢用戶自己的名次（不管他有沒有進前10名，都要回傳）
+    # 2️⃣ 查詢用戶自己的名次（不管有沒有進前10名）
     user_rank = None
     if user_id:
         cursor.execute("""
@@ -135,10 +141,17 @@ def daily_rankings():
         "userRank": user_rank
     })
 
-# ✅ 取得週排名
+# ✅ 取得週排名 (強制台灣時區+週一到週日)
 @app.route('/weekly_rankings', methods=['GET'])
 def weekly_rankings():
     user_id = request.args.get('user_id', type=int)
+
+    now_taiwan = get_taiwan_now()
+    today = now_taiwan.date()
+
+    # 計算這週的範圍 (台灣週一到週日)
+    start_of_week = today - timedelta(days=today.weekday())  # 週一
+    end_of_week = start_of_week + timedelta(days=6)          # 週日
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -151,15 +164,15 @@ def weekly_rankings():
                    RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
             FROM LearningPointsLog L
             JOIN Users U ON L.user_id = U.user_id
-            WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
+            WHERE L.date BETWEEN %s AND %s
             GROUP BY U.user_id, U.username, U.avatar_id
         ) t
         ORDER BY t.rank
         LIMIT 10
-    """)
+    """, (start_of_week, end_of_week))
     top10 = cursor.fetchall()
 
-    # 2️⃣ 查詢用戶自己的名次（不管他有沒有進前10名，都要回傳）
+    # 2️⃣ 查詢用戶自己的名次（不管有沒有進前10名）
     user_rank = None
     if user_id:
         cursor.execute("""
@@ -169,17 +182,19 @@ def weekly_rankings():
                        RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
                 FROM LearningPointsLog L
                 JOIN Users U ON L.user_id = U.user_id
-                WHERE YEARWEEK(L.date, 1) = YEARWEEK(CURDATE(), 1)
+                WHERE L.date BETWEEN %s AND %s
                 GROUP BY U.user_id, U.username, U.avatar_id
             ) t
             WHERE t.user_id = %s
-        """, (user_id,))
+        """, (start_of_week, end_of_week, user_id))
         user_rank = cursor.fetchone()
 
     cursor.close()
     conn.close()
 
     return jsonify({
+        "weekStart": start_of_week.isoformat(),
+        "weekEnd": end_of_week.isoformat(),
         "rankings": top10,
         "userRank": user_rank
     })
