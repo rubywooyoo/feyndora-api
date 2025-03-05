@@ -37,10 +37,21 @@ def get_db_connection():
         print(f"資料庫連接錯誤: {e}")
         return None
 
-# 取得台灣現在時間
+# ✅ 取得台灣當下時間
 def get_taiwan_now():
     taiwan = pytz.timezone('Asia/Taipei')
     return datetime.now(taiwan)
+
+# ✅ 取得今天日期（台灣時區）
+def get_today():
+    return get_taiwan_now().date()
+
+# ✅ 計算台灣本週範圍（週一~週日）
+def get_week_range():
+    today = get_today()
+    start_of_week = today - timedelta(days=today.weekday())  # 週一
+    end_of_week = start_of_week + timedelta(days=6)          # 週日
+    return start_of_week, end_of_week
 
 @app.route('/')
 def index():
@@ -96,8 +107,7 @@ def login():
 # ✅ 取得日排名 (強制台灣時區)
 @app.route('/daily_rankings', methods=['GET'])
 def daily_rankings():
-    now_taiwan = get_taiwan_now()
-    query_date = request.args.get('date', now_taiwan.date().isoformat())
+    query_date = request.args.get('date', get_today().isoformat())
     user_id = request.args.get('user_id', type=int)
 
     conn = get_db_connection()
@@ -105,27 +115,27 @@ def daily_rankings():
 
     # 1️⃣ 查詢前10名
     cursor.execute("""
-        SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
+        SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.ranking
         FROM (
             SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                   RANK() OVER (ORDER BY L.daily_points DESC) AS rank
+                   RANK() OVER (ORDER BY L.daily_points DESC) AS ranking
             FROM LearningPointsLog L
             JOIN Users U ON L.user_id = U.user_id
             WHERE L.date = %s
         ) t
-        ORDER BY t.rank
+        ORDER BY t.ranking
         LIMIT 10
     """, (query_date,))
     top10 = cursor.fetchall()
 
-    # 2️⃣ 查詢用戶自己的名次（不管有沒有進前10名）
+    # 2️⃣ 查詢用戶自己的名次
     user_rank = None
     if user_id:
         cursor.execute("""
-            SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.rank
+            SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.ranking
             FROM (
                 SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                       RANK() OVER (ORDER BY L.daily_points DESC) AS rank
+                       RANK() OVER (ORDER BY L.daily_points DESC) AS ranking
                 FROM LearningPointsLog L
                 JOIN Users U ON L.user_id = U.user_id
                 WHERE L.date = %s
@@ -148,40 +158,35 @@ def daily_rankings():
 def weekly_rankings():
     user_id = request.args.get('user_id', type=int)
 
-    now_taiwan = get_taiwan_now()
-    today = now_taiwan.date()
-
-    # 計算這週的範圍 (台灣週一到週日)
-    start_of_week = today - timedelta(days=today.weekday())  # 週一
-    end_of_week = start_of_week + timedelta(days=6)          # 週日
+    start_of_week, end_of_week = get_week_range()
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     # 1️⃣ 查詢前10名
     cursor.execute("""
-        SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
+        SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.ranking
         FROM (
             SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
-                   RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
+                   RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
             FROM LearningPointsLog L
             JOIN Users U ON L.user_id = U.user_id
             WHERE L.date BETWEEN %s AND %s
             GROUP BY U.user_id, U.username, U.avatar_id
         ) t
-        ORDER BY t.rank
+        ORDER BY t.ranking
         LIMIT 10
     """, (start_of_week, end_of_week))
     top10 = cursor.fetchall()
 
-    # 2️⃣ 查詢用戶自己的名次（不管有沒有進前10名）
+    # 2️⃣ 查詢用戶自己的名次
     user_rank = None
     if user_id:
         cursor.execute("""
-            SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.rank
+            SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.ranking
             FROM (
                 SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
-                       RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS rank
+                       RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
                 FROM LearningPointsLog L
                 JOIN Users U ON L.user_id = U.user_id
                 WHERE L.date BETWEEN %s AND %s
@@ -200,6 +205,7 @@ def weekly_rankings():
         "rankings": top10,
         "userRank": user_rank
     })
+
 
 # ✅ 更新學習點數（留給VR端呼叫）
 @app.route('/update_learning_points', methods=['POST'])
