@@ -3,3 +3,4 @@ mysql-connector-python
 bcrypt
 flask-limiter
 gunicorn
+pytz
