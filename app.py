@@ -240,12 +240,12 @@ def update_learning_points():
 
     return jsonify({"message": "學習點數更新完成"})
 
-# ✅ 取得用戶資料
+# ✅ 取得用戶資料（不含敏感資料）
 @app.route('/user/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Users WHERE user_id=%s", (user_id,))
+    cursor.execute("SELECT user_id, username, email, total_learning_points, coins, diamonds, avatar_id FROM Users WHERE user_id=%s", (user_id,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -445,6 +445,7 @@ def update_nickname(user_id):
     conn.commit()
     return jsonify({"message": "暱稱更新成功"}), 200
 
+# ✅ 更新頭貼
 @app.route('/update_avatar/<int:user_id>', methods=['PUT'])
 def update_avatar(user_id):
     data = request.json
