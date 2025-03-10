@@ -243,32 +243,33 @@ def update_learning_points():
 # ✅ 取得用戶當週的每日學習數
 @app.route('/weekly_points/<int:user_id>', methods=['GET'])
 def get_weekly_points(user_id):
-    today = get_today()  # ✅ 確保台灣時間
-    start_of_week = today - timedelta(days=today.weekday())  # ✅ 找到本週一
-    end_of_week = start_of_week + timedelta(days=6)  # ✅ 確保週日也包含進去
+    today = get_today()
+    start_of_week = today - timedelta(days=today.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     query = """
-        SELECT DATE_FORMAT(date, '%%Y-%%m-%%d') as date, daily_points 
+        SELECT date, daily_points 
         FROM LearningPointsLog
         WHERE user_id = %s AND date BETWEEN %s AND %s
-        ORDER BY date
     """
     cursor.execute(query, (user_id, start_of_week, end_of_week))
     rows = cursor.fetchall()
 
-    # ✅ 初始化 7 天分數（確保沒紀錄的天數是 0）
+    print(f"🔍 查詢到的記錄: {rows}")  # ✅ 看看有沒有查到數據
+
     weekly_data = { (start_of_week + timedelta(days=i)).strftime('%Y-%m-%d'): 0 for i in range(7)}
 
     for row in rows:
-        weekly_data[row['date']] = row['daily_points']
+        weekly_data[str(row['date'])] = row['daily_points']
 
     cursor.close()
     conn.close()
 
-    return jsonify({"weekly_points": list(weekly_data.values())})  # ✅ 回傳陣列（對應 7 天的分數）
+    print(f"✅ 回傳的 weekly_points: {list(weekly_data.values())}")
+    return jsonify({"weekly_points": list(weekly_data.values())})
 
 # ✅ 取得用戶課程數量
 @app.route('/courses_count/<int:user_id>', methods=['GET'])
