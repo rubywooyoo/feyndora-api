@@ -372,16 +372,6 @@ def get_weekly_points(user_id):
     print(f"✅ 回傳的 weekly_points: {list(weekly_data.values())}")
     return jsonify({"weekly_points": list(weekly_data.values())})
 
-# ✅ 取得用戶累積登入天數
-@app.route('/records_get/<int:user_id>', methods=['GET'])
-def get_records_count(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT total_signin_days FROM Users WHERE user_id=%s", (user_id,))
-    cursor.closes()
-    conn.close()
-    return jsonify ({"
-           
 # ✅ 取得用戶課程數量
 @app.route('/courses_count/<int:user_id>', methods=['GET'])
 def get_courses_count(user_id):
