@@ -372,6 +372,16 @@ def get_weekly_points(user_id):
     print(f"✅ 回傳的 weekly_points: {list(weekly_data.values())}")
     return jsonify({"weekly_points": list(weekly_data.values())})
 
+# ✅ 取得用戶累積登入天數
+@app.route('/records_get/<int:user_id>', methods=['GET'])
+def get_records_count(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT total_signin_days FROM Users WHERE user_id=%s", (user_id,))
+    cursor.closes()
+    conn.close()
+    return jsonify ({"
+           
 # ✅ 取得用戶課程數量
 @app.route('/courses_count/<int:user_id>', methods=['GET'])
 def get_courses_count(user_id):
@@ -388,14 +398,13 @@ def get_courses_count(user_id):
 def get_user(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT user_id, username, email, total_learning_points, coins, diamonds, avatar_id FROM Users WHERE user_id=%s", (user_id,))
+    cursor.execute("SELECT user_id, username, email, total_learning_points, coins, diamonds, avatar_id, total_signin_days FROM Users WHERE user_id=%s", (user_id,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()
     if not user:
         return jsonify({"error": "找不到用戶"}), 404
     return jsonify(user), 200
-
 
 # ✅ current_stage（每次呼叫都即時計算進度+更新progress+回傳最新current_stage）
 @app.route('/current_stage/<int:user_id>', methods=['GET'])
