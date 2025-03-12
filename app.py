@@ -206,6 +206,62 @@ def weekly_rankings():
         "userRank": user_rank
     })
 
+# ✅ 簽到功能
+@app.route('/signin/claim/<int:user_id>', methods=['POST'])
+def claim_signin_reward(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    today = get_today()
+
+    # 1️⃣ 檢查簽到狀態
+    cursor.execute("SELECT signin_day, has_claimed_today FROM SigninRecords WHERE user_id = %s", (user_id,))
+    record = cursor.fetchone()
+
+    if not record:
+        return jsonify({"error": "用戶簽到記錄不存在"}), 400
+
+    if record["has_claimed_today"]:
+        return jsonify({"error": "今天已經領取過獎勵"}), 400
+
+    signin_day = record["signin_day"]
+
+    # 2️⃣ 設定獎勵
+    rewards = {
+        1: {"coins": 100, "diamonds": 0},
+        2: {"coins": 300, "diamonds": 0},
+        3: {"coins": 500, "diamonds": 0},
+        4: {"coins": 1000, "diamonds": 0},
+        5: {"coins": 0, "diamonds": 1},
+        6: {"coins": 0, "diamonds": 3},
+        7: {"coins": 500, "diamonds": 5},
+    }
+    reward = rewards.get(signin_day, {"coins": 0, "diamonds": 0})
+
+    # 3️⃣ 更新 `SigninRecords` 記錄簽到
+    next_signin_day = 1 if signin_day == 7 else signin_day + 1
+    cursor.execute("""
+        UPDATE SigninRecords 
+        SET signin_day = %s, has_claimed_today = TRUE, last_signin_date = %s 
+        WHERE user_id = %s
+    """, (next_signin_day, today, user_id))
+
+    # 4️⃣ 累積簽到天數 +1（更新 Users 表）
+    cursor.execute("""
+        UPDATE Users SET total_signin_days = total_signin_days + 1, 
+        coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
+    """, (reward["coins"], reward["diamonds"], user_id))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "message": "簽到成功",
+        "signin_day": next_signin_day,
+        "coins_received": reward["coins"],
+        "diamonds_received": reward["diamonds"]
+    }), 200
 
 # ✅ 更新學習點數（留給VR端呼叫）
 @app.route('/update_learning_points', methods=['POST'])
