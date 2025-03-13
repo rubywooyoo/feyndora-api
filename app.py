@@ -267,17 +267,23 @@ def claim_signin_reward(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    today = get_today()
+    today = get_today()  # 確保日期格式統一 (YYYY-MM-DD)
 
-    # 檢查簽到狀態
+    # 🔹 檢查簽到狀態
     cursor.execute("SELECT signin_day, last_signin_date FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
 
     if not record:
         return jsonify({"error": "用戶簽到記錄不存在"}), 400
 
-    if record["last_signin_date"] == today:
-        return jsonify({"error": "今天已經領取過獎勵"}), 400  # 防止重複簽到
+    last_signin_date = record["last_signin_date"]
+
+    # 🔹 **防止重複簽到**
+    if last_signin_date == today:
+        return jsonify({
+            "error": "今天已經領取過獎勵",
+            "last_signin_date": last_signin_date  # **回傳日期，讓前端比對**
+        }), 400
 
     signin_day = record["signin_day"]
 
@@ -293,7 +299,7 @@ def claim_signin_reward(user_id):
     }
     reward = rewards.get(signin_day, {"coins": 0, "diamonds": 0})
 
-    # 更新 `SigninRecords` 記錄簽到
+    # 🔹 更新 `SigninRecords` 記錄簽到
     next_signin_day = 1 if signin_day == 7 else signin_day + 1
     cursor.execute("""
         UPDATE SigninRecords 
@@ -301,7 +307,7 @@ def claim_signin_reward(user_id):
         WHERE user_id = %s
     """, (next_signin_day, today, user_id))
 
-    # 更新 `Users` 表
+    # 🔹 更新 `Users` 表
     cursor.execute("""
         UPDATE Users SET total_signin_days = total_signin_days + 1, 
         coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
@@ -315,7 +321,8 @@ def claim_signin_reward(user_id):
         "message": "簽到成功",
         "signin_day": next_signin_day,
         "coins_received": reward["coins"],
-        "diamonds_received": reward["diamonds"]
+        "diamonds_received": reward["diamonds"],
+        "last_signin_date": today  # **回傳最新的簽到日期**
     }), 200
     
 # ✅ 更新學習點數（留給VR端呼叫）
