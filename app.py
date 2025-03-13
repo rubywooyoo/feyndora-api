@@ -498,6 +498,7 @@ def finish_course():
         SET current_stage = %s, vr_finished_at = NOW()
         WHERE course_id = %s
     """, (current_stage, course_id))
+    
     conn.commit()
 
     cursor.close()
@@ -624,5 +625,98 @@ def delete_user(user_id):
     conn.commit()
     return jsonify({"message": "帳號已刪除"}), 200
 
+
+# ✅ 檢查成就
+@app.route('/check_achievements/<int:user_id>', methods=['POST'])
+def check_achievements(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 取得該用戶的相關數據
+    cursor.execute("SELECT COUNT(*) AS course_count FROM Courses WHERE user_id=%s", (user_id,))
+    course_count = cursor.fetchone()["course_count"]
+
+    cursor.execute("SELECT total_learning_points FROM Users WHERE user_id=%s", (user_id,))
+    total_points = cursor.fetchone()["total_learning_points"]
+
+    cursor.execute("SELECT COUNT(*) AS completed_courses FROM Courses WHERE user_id=%s AND progress=100", (user_id,))
+    completed_courses = cursor.fetchone()["completed_courses"]
+
+    # **成就條件**
+    ACHIEVEMENT_RULES = {
+        "新增一門課程": {"condition": course_count >= 1, "reward": {"coins": 500, "diamonds": 0}},
+        "完整上完一門課": {"condition": completed_courses >= 1, "reward": {"coins": 1000, "diamonds": 1}},
+        "學習積分達到 500 分": {"condition": total_points >= 500, "reward": {"coins": 2000, "diamonds": 0}},
+    }
+
+    new_achievements = []
+
+    for badge_name, rule in ACHIEVEMENT_RULES.items():
+        if rule["condition"]:
+            # 檢查是否已經擁有該成就
+            cursor.execute("SELECT 1 FROM Achievements WHERE user_id = %s AND badge_name = %s", (user_id, badge_name))
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO Achievements (user_id, badge_name) VALUES (%s, %s)", (user_id, badge_name))
+                new_achievements.append(badge_name)
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "成就檢查完成", "new_achievements": new_achievements}), 200
+
+# ✅ 領取成就獎勵
+@app.route('/claim_achievement/<int:user_id>', methods=['POST'])
+def claim_achievement(user_id):
+    data = request.json
+    badge_name = data.get("badge_name")
+
+    if not badge_name:
+        return jsonify({"error": "請提供要領取的成就名稱"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 確保用戶擁有該成就，且還未領取
+    cursor.execute("""
+        SELECT * FROM Achievements WHERE user_id = %s AND badge_name = %s AND is_claimed = FALSE
+    """, (user_id, badge_name))
+    achievement = cursor.fetchone()
+
+    if not achievement:
+        return jsonify({"error": "該成就不存在或已領取"}), 400
+
+    # **獎勵對應表**
+    ACHIEVEMENT_REWARDS = {
+        "新增一門課程": {"coins": 500, "diamonds": 0},
+        "完整上完一門課": {"coins": 1000, "diamonds": 1},
+        "學習積分達到 500 分": {"coins": 2000, "diamonds": 0},
+    }
+
+    reward = ACHIEVEMENT_REWARDS.get(badge_name)
+
+    if not reward:
+        return jsonify({"error": "無法獲取該成就的獎勵"}), 400
+
+    # **更新用戶的金幣 & 鑽石**
+    cursor.execute("""
+        UPDATE Users SET coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
+    """, (reward["coins"], reward["diamonds"], user_id))
+
+    # **標記成就為已領取**
+    cursor.execute("""
+        UPDATE Achievements SET is_claimed = TRUE, claimed_at = NOW() WHERE user_id = %s AND badge_name = %s
+    """, (user_id, badge_name))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "message": f"成功領取 {badge_name} 的獎勵！",
+        "coins_received": reward["coins"],
+        "diamonds_received": reward["diamonds"]
+    }), 200
+    
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
