@@ -222,16 +222,17 @@ def check_signin_status(user_id):
     if not record:
         return jsonify({"error": "用戶簽到記錄不存在"}), 400
 
-    # 取得今天的日期
-    today = get_today()
-    
-    # 判斷今天是否已經簽到過
-    already_signed_in = record["last_signin_date"] == today
+    # ✅ **取得今天的台灣時間**
+    server_today = get_today()  # `get_today()` 已經回傳台灣時區
+
+    # ✅ **判斷今天是否已經簽到過**
+    already_signed_in = record["last_signin_date"] == server_today
 
     response_data = {
         "signin_day": record["signin_day"],
         "has_claimed_today": already_signed_in,  # 根據 `last_signin_date` 判斷
-        "last_signin_date": record["last_signin_date"]
+        "last_signin_date": record["last_signin_date"],
+        "server_today": server_today  # ✅ **回傳後端的當前日期**
     }
 
     return jsonify(response_data), 200
