@@ -213,23 +213,30 @@ def check_signin_status(user_id):
     cursor = conn.cursor(dictionary=True)
 
     # 查詢用戶的簽到記錄
-    cursor.execute("SELECT signin_day, has_claimed_today FROM SigninRecords WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT signin_day, has_claimed_today, last_signin_date FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
-
-    if not record:
-        return jsonify({"error": "用戶簽到記錄不存在"}), 400
-
-    response_data = {
-        "signin_day": record["signin_day"],
-        "has_claimed_today": record["has_claimed_today"]
-    }
 
     cursor.close()
     conn.close()
 
+    if not record:
+        return jsonify({"error": "用戶簽到記錄不存在"}), 400
+
+    # 取得今天的日期
+    today = get_today()
+    
+    # 判斷今天是否已經簽到過
+    already_signed_in = record["last_signin_date"] == today
+
+    response_data = {
+        "signin_day": record["signin_day"],
+        "has_claimed_today": already_signed_in,  # 根據 `last_signin_date` 判斷
+        "last_signin_date": record["last_signin_date"]
+    }
+
     return jsonify(response_data), 200
 
-# ✅  初始化簽到記錄，以防用戶沒有簽到過
+# ✅ 初始化簽到記錄，以防用戶沒有簽到過
 @app.route('/signin/init/<int:user_id>', methods=['POST'])
 def initialize_signin_record(user_id):
     conn = get_db_connection()
@@ -243,7 +250,10 @@ def initialize_signin_record(user_id):
         return jsonify({"message": "簽到記錄已存在"}), 200
 
     # 如果沒有簽到記錄，則建立初始記錄
-    cursor.execute("INSERT INTO SigninRecords (user_id, signin_day, has_claimed_today, last_signin_date) VALUES (%s, 1, FALSE, NULL)", (user_id,))
+    cursor.execute("""
+        INSERT INTO SigninRecords (user_id, signin_day, has_claimed_today, last_signin_date) 
+        VALUES (%s, 1, FALSE, NULL)
+    """, (user_id,))
     conn.commit()
 
     cursor.close()
@@ -251,7 +261,7 @@ def initialize_signin_record(user_id):
 
     return jsonify({"message": "簽到記錄初始化成功"}), 201
 
-# ✅  領取簽到獎勵
+# ✅ 領取簽到獎勵
 @app.route('/signin/claim/<int:user_id>', methods=['POST'])
 def claim_signin_reward(user_id):
     conn = get_db_connection()
@@ -260,14 +270,14 @@ def claim_signin_reward(user_id):
     today = get_today()
 
     # 檢查簽到狀態
-    cursor.execute("SELECT signin_day, has_claimed_today FROM SigninRecords WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT signin_day, last_signin_date FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
 
     if not record:
         return jsonify({"error": "用戶簽到記錄不存在"}), 400
 
-    if record["has_claimed_today"]:
-        return jsonify({"error": "今天已經領取過獎勵"}), 400
+    if record["last_signin_date"] == today:
+        return jsonify({"error": "今天已經領取過獎勵"}), 400  # 防止重複簽到
 
     signin_day = record["signin_day"]
 
@@ -287,7 +297,7 @@ def claim_signin_reward(user_id):
     next_signin_day = 1 if signin_day == 7 else signin_day + 1
     cursor.execute("""
         UPDATE SigninRecords 
-        SET signin_day = %s, has_claimed_today = TRUE, last_signin_date = %s 
+        SET signin_day = %s, last_signin_date = %s 
         WHERE user_id = %s
     """, (next_signin_day, today, user_id))
 
