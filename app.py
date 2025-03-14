@@ -570,7 +570,8 @@ def update_progress():
 
     cursor.execute("""
         UPDATE Courses
-        SET progress = %s, progress_one_to_one = %s, progress_classroom = %s, current_stage = %s, is_vr_ready = 0
+        SET progress = %s, progress_one_to_one = %s, progress_classroom = %s, current_stage = %s, 
+            is_vr_ready = 0, updated_at = NOW()  -- ✅ 讓 updated_at 自動更新
         WHERE course_id = %s
     """, (data['progress'], data['progress_one_to_one'], data['progress_classroom'], data['current_stage'], data['course_id']))
 
