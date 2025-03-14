@@ -717,6 +717,29 @@ def claim_achievement(user_id):
         "coins_received": reward["coins"],
         "diamonds_received": reward["diamonds"]
     }), 200
+
+# ✅ 檢查單一成就是否已領取
+@app.route('/check_achievement_status/<int:user_id>', methods=['GET'])
+def check_achievement_status(user_id):
+    badge_name = request.args.get("badge_name")
+    if not badge_name:
+        return jsonify({"error": "請提供成就名稱"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 查詢該用戶對應成就的 is_claimed 狀態
+    cursor.execute("SELECT is_claimed FROM Achievements WHERE user_id = %s AND badge_name = %s", (user_id, badge_name))
+    achievement = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+
+    # 若有查詢到資料，回傳 is_claimed 狀態；若無資料，則回傳 False（代表尚未解鎖或不存在）
+    if achievement:
+        return jsonify({"is_claimed": bool(achievement["is_claimed"])}), 200
+    else:
+        return jsonify({"is_claimed": False}), 200
     
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
