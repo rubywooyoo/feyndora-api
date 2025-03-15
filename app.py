@@ -758,59 +758,46 @@ def get_weekly_tasks(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    week_start = get_week_range()[0]  # 取得本週的起始日期（週一）
+    week_start = get_week_range()[0]  # 本週週一
 
-    # ✅ 計算【完成 5 堂課】
-    cursor.execute("""
-        SELECT COUNT(*) AS completed_courses
-        FROM Courses
-        WHERE user_id = %s AND progress = 100 AND updated_at >= %s
-    """, (user_id, week_start))
-    completed_courses = cursor.fetchone()["completed_courses"]
-
-    # ✅ 計算【學習點數達 1000】
-    cursor.execute("""
-        SELECT COALESCE(SUM(daily_points), 0) AS weekly_points
-        FROM LearningPointsLog
-        WHERE user_id = %s AND date >= %s
-    """, (user_id, week_start))
-    weekly_points = cursor.fetchone()["weekly_points"]
-
-    # ✅ 計算【連續登入 7 天】
-    cursor.execute("""
-        SELECT weekly_streak FROM SigninRecords WHERE user_id = %s
-    """, (user_id,))
-    streak_record = cursor.fetchone()
-    weekly_streak = streak_record["weekly_streak"] if streak_record else 0
-
-    # ✅ 確保 `WeeklyTasks` 有紀錄 (如果沒有，就插入預設值)
+    # ✅ 確保 `WeeklyTasks` 有紀錄 (如果沒有，就插入 `FALSE`)
     for task_id in [1, 2, 3]:
         cursor.execute("""
-            SELECT is_claimed FROM WeeklyTasks 
-            WHERE user_id = %s AND task_id = %s AND week_start = %s
+            INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
+            VALUES (%s, %s, %s, FALSE)
+            ON DUPLICATE KEY UPDATE is_claimed = is_claimed
         """, (user_id, task_id, week_start))
-        record = cursor.fetchone()
+    
+    conn.commit()
 
-        if record is None:
-            # 如果沒有該筆紀錄，則插入 `is_claimed = False`
-            cursor.execute("""
-                INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
-                VALUES (%s, %s, %s, FALSE)
-            """, (user_id, task_id, week_start))
-            conn.commit()
-
-    # ✅ 查詢 `WeeklyTasks`，確保 `is_claimed` 正確
+    # ✅ 查詢 `is_claimed`
     cursor.execute("""
-        SELECT task_id, is_claimed 
-        FROM WeeklyTasks 
+        SELECT task_id, is_claimed FROM WeeklyTasks 
         WHERE user_id = %s AND week_start = %s
     """, (user_id, week_start))
     claimed_tasks = {row["task_id"]: row["is_claimed"] for row in cursor.fetchall()}
 
+    # ✅ 計算完成度
+    cursor.execute("""
+        SELECT COUNT(*) AS completed_courses FROM Courses 
+        WHERE user_id = %s AND progress = 100 AND updated_at >= %s
+    """, (user_id, week_start))
+    completed_courses = cursor.fetchone()["completed_courses"]
+
+    cursor.execute("""
+        SELECT COALESCE(SUM(daily_points), 0) AS weekly_points 
+        FROM LearningPointsLog WHERE user_id = %s AND date >= %s
+    """, (user_id, week_start))
+    weekly_points = cursor.fetchone()["weekly_points"]
+
+    cursor.execute("SELECT weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
+    streak_record = cursor.fetchone()
+    weekly_streak = streak_record["weekly_streak"] if streak_record else 0
+
     cursor.close()
     conn.close()
 
-    # 回傳進度，根據 `claimed_tasks` 決定 is_claimed
+    # ✅ 回傳 JSON
     return jsonify({
         "tasks": [
             {"task_id": 1, "name": "完成 5 堂課", "progress": completed_courses, "target": 5, "is_claimed": claimed_tasks.get(1, False)},
@@ -818,7 +805,7 @@ def get_weekly_tasks(user_id):
             {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7, "is_claimed": claimed_tasks.get(3, False)},
         ]
     }), 200
-
+    
 # ✅ 領取每週任務獎勵
 @app.route('/claim_weekly_task', methods=['POST'])
 def claim_weekly_task():
@@ -832,68 +819,42 @@ def claim_weekly_task():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    week_start = get_week_range()[0]  # 本週週一
+    week_start = get_week_range()[0]
 
-    # **檢查是否已經領取過**
-    cursor.execute("""
-        SELECT is_claimed FROM WeeklyTasks 
-        WHERE user_id = %s AND task_id = %s AND week_start = %s
-    """, (user_id, task_id, week_start))
-    claimed_record = cursor.fetchone()
-
-    if claimed_record and claimed_record["is_claimed"]:
-        return jsonify({"error": "本週已經領取過獎勵"}), 400
-
-    # **檢查任務是否達標**
-    if task_id == 1:
-        cursor.execute("""
-            SELECT COUNT(*) AS completed_courses FROM Courses 
-            WHERE user_id = %s AND progress = 100 AND updated_at >= %s
-        """, (user_id, week_start))
-        is_completed = cursor.fetchone()["completed_courses"] >= 5
-    elif task_id == 2:
-        cursor.execute("""
-            SELECT COALESCE(SUM(daily_points), 0) AS weekly_points FROM LearningPointsLog 
-            WHERE user_id = %s AND date >= %s
-        """, (user_id, week_start))
-        is_completed = cursor.fetchone()["weekly_points"] >= 1000
-    elif task_id == 3:
-        cursor.execute("SELECT weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
-        streak_record = cursor.fetchone()
-        is_completed = streak_record["weekly_streak"] >= 7 if streak_record else False
-
-    if not is_completed:
-        return jsonify({"error": "任務尚未完成"}), 400
-
-    # **發送獎勵**
-    reward = {"coins": 1000}
-    cursor.execute("""
-        UPDATE Users SET coins = coins + %s WHERE user_id = %s
-    """, (reward["coins"], user_id))
-
-    # **標記已領取（插入或更新 `WeeklyTasks`）**
+    # **確保有 WeeklyTasks 記錄**
     cursor.execute("""
         INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
-        VALUES (%s, %s, %s, TRUE)
-        ON DUPLICATE KEY UPDATE is_claimed = TRUE
+        VALUES (%s, %s, %s, FALSE)
+        ON DUPLICATE KEY UPDATE is_claimed = is_claimed
     """, (user_id, task_id, week_start))
     
     conn.commit()
-    
-    # **確認更新成功**
-    cursor.execute("""
-        SELECT is_claimed FROM WeeklyTasks WHERE user_id = %s AND task_id = %s AND week_start = %s
-    """, (user_id, task_id, week_start))
-    confirmed_claimed = cursor.fetchone()["is_claimed"]
 
+    # **檢查是否達標**
+    task_conditions = {
+        1: "SELECT COUNT(*) AS completed FROM Courses WHERE user_id = %s AND progress = 100 AND updated_at >= %s",
+        2: "SELECT COALESCE(SUM(daily_points), 0) AS completed FROM LearningPointsLog WHERE user_id = %s AND date >= %s",
+        3: "SELECT weekly_streak AS completed FROM SigninRecords WHERE user_id = %s"
+    }
+    cursor.execute(task_conditions[task_id], (user_id, week_start))
+    completed = cursor.fetchone()["completed"]
+
+    if (task_id == 1 and completed < 5) or (task_id == 2 and completed < 1000) or (task_id == 3 and completed < 7):
+        return jsonify({"error": "任務尚未完成"}), 400
+
+    # **標記已領取**
+    cursor.execute("""
+        UPDATE WeeklyTasks SET is_claimed = TRUE 
+        WHERE user_id = %s AND task_id = %s AND week_start = %s
+    """, (user_id, task_id, week_start))
+
+    conn.commit()
     cursor.close()
     conn.close()
 
     return jsonify({
         "message": "成功領取獎勵！",
-        "task_id": task_id,
-        "coins_received": reward["coins"],
-        "is_claimed": confirmed_claimed
+        "task_id": task_id
     }), 200
     
 if __name__ == '__main__':
