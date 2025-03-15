@@ -795,7 +795,7 @@ def get_weekly_tasks(user_id):
         ]
     }), 200
 
- # ✅ 領取每週任務獎勵
+# ✅ 領取每週任務獎勵
 @app.route('/claim_weekly_task', methods=['POST'])
 def claim_weekly_task():
     data = request.json
@@ -840,11 +840,11 @@ def claim_weekly_task():
     if not is_completed:
         return jsonify({"error": "任務尚未完成"}), 400
 
-    # **發送獎勵**
-    reward = {"coins": 500, "diamonds": 1}
+    # **發送獎勵：現在只發 1000 金幣**
+    reward = {"coins": 1000}
     cursor.execute("""
-        UPDATE Users SET coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
-    """, (reward["coins"], reward["diamonds"], user_id))
+        UPDATE Users SET coins = coins + %s WHERE user_id = %s
+    """, (reward["coins"], user_id))
 
     # **標記已領取（記錄本週）**
     cursor.execute("""
@@ -859,8 +859,7 @@ def claim_weekly_task():
     return jsonify({
         "message": "成功領取獎勵！",
         "task_id": task_id,
-        "coins_received": reward["coins"],
-        "diamonds_received": reward["diamonds"]
+        "coins_received": reward["coins"]
     }), 200
     
 if __name__ == '__main__':
