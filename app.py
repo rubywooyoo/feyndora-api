@@ -269,24 +269,38 @@ def claim_signin_reward(user_id):
     cursor = conn.cursor(dictionary=True)
 
     today = get_today()  # 確保日期格式統一 (YYYY-MM-DD)
+    start_of_week, end_of_week = get_week_range()  # 取得本週的範圍（週一到週日）
 
     # 🔹 檢查簽到狀態
-    cursor.execute("SELECT signin_day, last_signin_date FROM SigninRecords WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT signin_day, last_signin_date, weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
 
     if not record:
         return jsonify({"error": "用戶簽到記錄不存在"}), 400
 
     last_signin_date = record["last_signin_date"]
+    weekly_streak = record["weekly_streak"]
 
     # 🔹 **防止重複簽到**
     if last_signin_date == today:
         return jsonify({
             "error": "今天已經領取過獎勵",
-            "last_signin_date": last_signin_date  # **回傳日期，讓前端比對**
+            "last_signin_date": last_signin_date
         }), 400
 
     signin_day = record["signin_day"]
+
+    # ✅ **更新連續簽到計算**
+    if last_signin_date and (last_signin_date + timedelta(days=1)) == today:
+        # 連續簽到，weekly_streak +1
+        weekly_streak += 1
+    else:
+        # 不是連續簽到，重置 weekly_streak
+        weekly_streak = 1
+
+    # ✅ **如果是新的一週，重新計算連續簽到**
+    if today == start_of_week:
+        weekly_streak = 1
 
     # 設定獎勵
     rewards = {
@@ -304,9 +318,9 @@ def claim_signin_reward(user_id):
     next_signin_day = 1 if signin_day == 7 else signin_day + 1
     cursor.execute("""
         UPDATE SigninRecords 
-        SET signin_day = %s, last_signin_date = %s 
+        SET signin_day = %s, last_signin_date = %s, weekly_streak = %s
         WHERE user_id = %s
-    """, (next_signin_day, today, user_id))
+    """, (next_signin_day, today, weekly_streak, user_id))
 
     # 🔹 更新 `Users` 表
     cursor.execute("""
@@ -321,9 +335,10 @@ def claim_signin_reward(user_id):
     return jsonify({
         "message": "簽到成功",
         "signin_day": next_signin_day,
+        "weekly_streak": weekly_streak,  # ✅ 新增這個欄位
         "coins_received": reward["coins"],
         "diamonds_received": reward["diamonds"],
-        "last_signin_date": today  # **回傳最新的簽到日期**
+        "last_signin_date": today
     }), 200
     
 # ✅ 更新學習點數（留給VR端呼叫）
