@@ -783,15 +783,23 @@ def get_weekly_tasks(user_id):
     streak_record = cursor.fetchone()
     weekly_streak = streak_record["weekly_streak"] if streak_record else 0
 
+    # ✅ 查詢 `WeeklyTasks`，檢查是否已領取獎勵
+    cursor.execute("""
+        SELECT task_id, is_claimed 
+        FROM WeeklyTasks 
+        WHERE user_id = %s AND week_start = %s
+    """, (user_id, week_start))
+    claimed_tasks = {row["task_id"]: row["is_claimed"] for row in cursor.fetchall()}
+
     cursor.close()
     conn.close()
 
-    # 回傳進度
+    # 回傳進度，根據 `claimed_tasks` 決定 is_claimed
     return jsonify({
         "tasks": [
-            {"task_id": 1, "name": "完成 5 堂課", "progress": completed_courses, "target": 5},
-            {"task_id": 2, "name": "學習點數達 1000", "progress": weekly_points, "target": 1000},
-            {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7},
+            {"task_id": 1, "name": "完成 5 堂課", "progress": completed_courses, "target": 5, "is_claimed": claimed_tasks.get(1, False)},
+            {"task_id": 2, "name": "學習點數達 1000", "progress": weekly_points, "target": 1000, "is_claimed": claimed_tasks.get(2, False)},
+            {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7, "is_claimed": claimed_tasks.get(3, False)},
         ]
     }), 200
 
@@ -810,13 +818,14 @@ def claim_weekly_task():
 
     week_start = get_week_range()[0]  # 本週週一
 
-    # **確保用戶沒有在本週重複領取**
+    # **檢查是否已經領取過**
     cursor.execute("""
-        SELECT 1 FROM Achievements 
-        WHERE user_id = %s AND badge_name = %s AND week_start = %s
-    """, (user_id, f"weekly_task_{task_id}", week_start))
-    
-    if cursor.fetchone():
+        SELECT is_claimed FROM WeeklyTasks 
+        WHERE user_id = %s AND task_id = %s AND week_start = %s
+    """, (user_id, task_id, week_start))
+    claimed_record = cursor.fetchone()
+
+    if claimed_record and claimed_record["is_claimed"]:
         return jsonify({"error": "本週已經領取過獎勵"}), 400
 
     # **檢查任務是否達標**
@@ -840,17 +849,18 @@ def claim_weekly_task():
     if not is_completed:
         return jsonify({"error": "任務尚未完成"}), 400
 
-    # **發送獎勵：現在只發 1000 金幣**
+    # **發送獎勵**
     reward = {"coins": 1000}
     cursor.execute("""
         UPDATE Users SET coins = coins + %s WHERE user_id = %s
     """, (reward["coins"], user_id))
 
-    # **標記已領取（記錄本週）**
+    # **標記已領取（插入或更新 `WeeklyTasks`）**
     cursor.execute("""
-        INSERT INTO Achievements (user_id, badge_name, is_claimed, claimed_at, week_start) 
-        VALUES (%s, %s, TRUE, NOW(), %s)
-    """, (user_id, f"weekly_task_{task_id}", week_start))
+        INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
+        VALUES (%s, %s, %s, TRUE)
+        ON DUPLICATE KEY UPDATE is_claimed = TRUE
+    """, (user_id, task_id, week_start))
 
     conn.commit()
     cursor.close()
