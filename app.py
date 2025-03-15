@@ -751,7 +751,7 @@ def get_user_achievements(user_id):
 
     # 格式化輸出
     return jsonify({"achievements": achievements}), 200
-
+    
 # ✅ 查詢當週任務進度
 @app.route('/weekly_tasks/<int:user_id>', methods=['GET'])
 def get_weekly_tasks(user_id):
@@ -760,11 +760,11 @@ def get_weekly_tasks(user_id):
 
     week_start = get_week_range()[0]  # 本週週一
 
-    # ✅ 確保 `WeeklyTasks` 有紀錄 (如果沒有，就插入 `FALSE`)
+    # ✅ 確保 `WeeklyTasks` 有紀錄 (如果沒有，就插入 `0`)
     for task_id in [1, 2, 3]:
         cursor.execute("""
             INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
-            VALUES (%s, %s, %s, FALSE)
+            VALUES (%s, %s, %s, 0)
             ON DUPLICATE KEY UPDATE is_claimed = is_claimed
         """, (user_id, task_id, week_start))
     
@@ -775,7 +775,8 @@ def get_weekly_tasks(user_id):
         SELECT task_id, is_claimed FROM WeeklyTasks 
         WHERE user_id = %s AND week_start = %s
     """, (user_id, week_start))
-    claimed_tasks = {row["task_id"]: row["is_claimed"] for row in cursor.fetchall()}
+    
+    claimed_tasks = {row["task_id"]: int(row["is_claimed"]) for row in cursor.fetchall()}  # 確保 `is_claimed` 為 `0/1`
 
     # ✅ 計算完成度
     cursor.execute("""
@@ -797,15 +798,16 @@ def get_weekly_tasks(user_id):
     cursor.close()
     conn.close()
 
-    # ✅ 回傳 JSON
+    # ✅ 回傳 JSON（確保 `is_claimed` 為 `0` 或 `1`）
     return jsonify({
         "tasks": [
-            {"task_id": 1, "name": "完成 5 堂課", "progress": completed_courses, "target": 5, "is_claimed": claimed_tasks.get(1, False)},
-            {"task_id": 2, "name": "學習點數達 1000", "progress": weekly_points, "target": 1000, "is_claimed": claimed_tasks.get(2, False)},
-            {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7, "is_claimed": claimed_tasks.get(3, False)},
+            {"task_id": 1, "name": "完成 5 堂課", "progress": completed_courses, "target": 5, "is_claimed": claimed_tasks.get(1, 0)},
+            {"task_id": 2, "name": "學習點數達 1000", "progress": weekly_points, "target": 1000, "is_claimed": claimed_tasks.get(2, 0)},
+            {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7, "is_claimed": claimed_tasks.get(3, 0)},
         ]
     }), 200
-    
+
+
 # ✅ 領取每週任務獎勵
 @app.route('/claim_weekly_task', methods=['POST'])
 def claim_weekly_task():
@@ -824,7 +826,7 @@ def claim_weekly_task():
     # **確保有 WeeklyTasks 記錄**
     cursor.execute("""
         INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
-        VALUES (%s, %s, %s, FALSE)
+        VALUES (%s, %s, %s, 0)
         ON DUPLICATE KEY UPDATE is_claimed = is_claimed
     """, (user_id, task_id, week_start))
     
@@ -842,9 +844,9 @@ def claim_weekly_task():
     if (task_id == 1 and completed < 5) or (task_id == 2 and completed < 1000) or (task_id == 3 and completed < 7):
         return jsonify({"error": "任務尚未完成"}), 400
 
-    # **標記已領取**
+    # **標記已領取（改為 `1`）**
     cursor.execute("""
-        UPDATE WeeklyTasks SET is_claimed = TRUE 
+        UPDATE WeeklyTasks SET is_claimed = 1 
         WHERE user_id = %s AND task_id = %s AND week_start = %s
     """, (user_id, task_id, week_start))
 
