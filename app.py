@@ -807,8 +807,7 @@ def get_weekly_tasks(user_id):
         ]
     }), 200
 
-
-# ✅ 領取每週任務獎勵
+ # ✅ 領取任務獎勵
 @app.route('/claim_weekly_task', methods=['POST'])
 def claim_weekly_task():
     data = request.json
@@ -823,7 +822,7 @@ def claim_weekly_task():
 
     week_start = get_week_range()[0]
 
-    # **確保有 WeeklyTasks 記錄**
+    # 確保有 WeeklyTasks 記錄
     cursor.execute("""
         INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
         VALUES (%s, %s, %s, 0)
@@ -832,7 +831,7 @@ def claim_weekly_task():
     
     conn.commit()
 
-    # **檢查是否達標**
+    # 檢查是否達標
     task_conditions = {
         1: "SELECT COUNT(*) AS completed FROM Courses WHERE user_id = %s AND progress = 100 AND updated_at >= %s",
         2: "SELECT COALESCE(SUM(daily_points), 0) AS completed FROM LearningPointsLog WHERE user_id = %s AND date >= %s",
@@ -844,11 +843,15 @@ def claim_weekly_task():
     if (task_id == 1 and completed < 5) or (task_id == 2 and completed < 1000) or (task_id == 3 and completed < 7):
         return jsonify({"error": "任務尚未完成"}), 400
 
-    # **標記已領取（改為 `1`）**
+    # 標記已領取（改為 `1`）
     cursor.execute("""
         UPDATE WeeklyTasks SET is_claimed = 1 
         WHERE user_id = %s AND task_id = %s AND week_start = %s
     """, (user_id, task_id, week_start))
+
+    # **✅ 給用戶加金幣**
+    reward_coins = 1000  # 你可以根據 task_id 設置不同獎勵
+    cursor.execute("UPDATE Users SET coins = coins + %s WHERE user_id = %s", (reward_coins, user_id))
 
     conn.commit()
     cursor.close()
@@ -856,7 +859,8 @@ def claim_weekly_task():
 
     return jsonify({
         "message": "成功領取獎勵！",
-        "task_id": task_id
+        "task_id": task_id,
+        "reward_coins": reward_coins  # **✅ 回傳獎勵金幣數量**
     }), 200
     
 if __name__ == '__main__':
