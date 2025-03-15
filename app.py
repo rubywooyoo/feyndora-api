@@ -783,7 +783,23 @@ def get_weekly_tasks(user_id):
     streak_record = cursor.fetchone()
     weekly_streak = streak_record["weekly_streak"] if streak_record else 0
 
-    # ✅ 查詢 `WeeklyTasks`，檢查是否已領取獎勵
+    # ✅ 確保 `WeeklyTasks` 有紀錄 (如果沒有，就插入預設值)
+    for task_id in [1, 2, 3]:
+        cursor.execute("""
+            SELECT is_claimed FROM WeeklyTasks 
+            WHERE user_id = %s AND task_id = %s AND week_start = %s
+        """, (user_id, task_id, week_start))
+        record = cursor.fetchone()
+
+        if record is None:
+            # 如果沒有該筆紀錄，則插入 `is_claimed = False`
+            cursor.execute("""
+                INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed) 
+                VALUES (%s, %s, %s, FALSE)
+            """, (user_id, task_id, week_start))
+            conn.commit()
+
+    # ✅ 查詢 `WeeklyTasks`，確保 `is_claimed` 正確
     cursor.execute("""
         SELECT task_id, is_claimed 
         FROM WeeklyTasks 
@@ -861,15 +877,23 @@ def claim_weekly_task():
         VALUES (%s, %s, %s, TRUE)
         ON DUPLICATE KEY UPDATE is_claimed = TRUE
     """, (user_id, task_id, week_start))
-
+    
     conn.commit()
+    
+    # **確認更新成功**
+    cursor.execute("""
+        SELECT is_claimed FROM WeeklyTasks WHERE user_id = %s AND task_id = %s AND week_start = %s
+    """, (user_id, task_id, week_start))
+    confirmed_claimed = cursor.fetchone()["is_claimed"]
+
     cursor.close()
     conn.close()
 
     return jsonify({
         "message": "成功領取獎勵！",
         "task_id": task_id,
-        "coins_received": reward["coins"]
+        "coins_received": reward["coins"],
+        "is_claimed": confirmed_claimed
     }), 200
     
 if __name__ == '__main__':
