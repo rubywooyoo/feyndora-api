@@ -758,6 +758,16 @@ def get_weekly_tasks(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     week_start = get_week_range()[0]  # 本週週一
+    today = get_today()              # 今天（台灣日期）
+
+    # 若今天就是週一，則重置本週的所有任務 is_claimed 為 0
+    if today == week_start:
+        cursor.execute("""
+            UPDATE WeeklyTasks
+            SET is_claimed = 0
+            WHERE user_id = %s AND week_start = %s
+        """, (user_id, week_start))
+        conn.commit()
 
     # 確保 WeeklyTasks 表中有該用戶該週的三筆記錄（若無則插入預設 0）
     for task_id in [1, 2, 3]:
@@ -768,7 +778,7 @@ def get_weekly_tasks(user_id):
         """, (user_id, task_id, week_start))
     conn.commit()
 
-    # 取得 WeeklyTasks 中的 is_claimed 狀態（確保回傳 0 或 1）
+    # 取得 WeeklyTasks 中的 is_claimed 狀態（回傳 0 或 1）
     cursor.execute("""
         SELECT task_id, is_claimed FROM WeeklyTasks
         WHERE user_id = %s AND week_start = %s
@@ -803,7 +813,6 @@ def get_weekly_tasks(user_id):
             {"task_id": 3, "name": "連續登入 7 天", "progress": weekly_streak, "target": 7, "is_claimed": claimed_tasks.get(3, 0)},
         ]
     }), 200
-
 
 # ✅ 領取每週任務獎勵
 @app.route('/claim_weekly_task', methods=['POST'])
