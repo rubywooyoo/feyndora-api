@@ -808,16 +808,18 @@ def claim_weekly_task():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    week_start = get_week_range()[0]  # 取得本週的起始日期（週一）
+    week_start = get_week_range()[0]  # 本週週一
 
-    # **確保用戶沒有重複領取獎勵**
+    # **確保用戶沒有在本週重複領取**
     cursor.execute("""
-        SELECT 1 FROM Achievements WHERE user_id = %s AND badge_name = %s AND is_claimed = TRUE
-    """, (user_id, f"weekly_task_{task_id}"))
+        SELECT 1 FROM Achievements 
+        WHERE user_id = %s AND badge_name = %s AND week_start = %s
+    """, (user_id, f"weekly_task_{task_id}", week_start))
+    
     if cursor.fetchone():
-        return jsonify({"error": "已經領取過獎勵"}), 400
+        return jsonify({"error": "本週已經領取過獎勵"}), 400
 
-    # **根據不同的任務 ID 計算是否達標**
+    # **檢查任務是否達標**
     if task_id == 1:
         cursor.execute("""
             SELECT COUNT(*) AS completed_courses FROM Courses 
@@ -839,16 +841,16 @@ def claim_weekly_task():
         return jsonify({"error": "任務尚未完成"}), 400
 
     # **發送獎勵**
-    reward = {"coins": 500, "diamonds": 1}  # 你可以更改獎勵
+    reward = {"coins": 500, "diamonds": 1}
     cursor.execute("""
         UPDATE Users SET coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
     """, (reward["coins"], reward["diamonds"], user_id))
 
-    # **標記已領取**
+    # **標記已領取（記錄本週）**
     cursor.execute("""
-        INSERT INTO Achievements (user_id, badge_name, is_claimed, claimed_at) 
-        VALUES (%s, %s, TRUE, NOW())
-    """, (user_id, f"weekly_task_{task_id}"))
+        INSERT INTO Achievements (user_id, badge_name, is_claimed, claimed_at, week_start) 
+        VALUES (%s, %s, TRUE, NOW(), %s)
+    """, (user_id, f"weekly_task_{task_id}", week_start))
 
     conn.commit()
     cursor.close()
