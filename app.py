@@ -868,5 +868,62 @@ def claim_weekly_task():
         "reward_coins": reward_coins
     }), 200
     
+# ✅ 收藏pre課程（修正重複插入問題）
+@app.route('/save_course', methods=['POST'])
+def save_course():
+    data = request.json
+    user_id = data.get("user_id")
+    course_name = data.get("course_name")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT IGNORE INTO SavedCourses (user_id, course_name) VALUES (%s, %s)
+    """, (user_id, course_name))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "課程收藏成功"}), 200
+
+# ✅ 查詢用戶的收藏 pre 課程
+@app.route('/saved_courses/<int:user_id>', methods=['GET'])
+def get_saved_courses(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT course_name FROM SavedCourses WHERE user_id = %s", (user_id,))
+    saved_courses = [row["course_name"] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"saved_courses": saved_courses}), 200
+
+# ✅ 取消收藏 pre 課程
+@app.route('/remove_course', methods=['POST'])
+def remove_course():
+    data = request.json
+    user_id = data.get("user_id")
+    course_name = data.get("course_name")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        DELETE FROM SavedCourses WHERE user_id = %s AND course_name = %s
+    """, (user_id, course_name))
+    rows_affected = cursor.rowcount  # 獲取影響的行數
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    if rows_affected > 0:
+        return jsonify({"message": "課程已取消收藏"}), 200
+    else:
+        return jsonify({"error": "該課程未收藏或已刪除"}), 400
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
