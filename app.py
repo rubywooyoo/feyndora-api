@@ -212,27 +212,47 @@ def check_signin_status(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # 查詢用戶的簽到記錄
-    cursor.execute("SELECT signin_day, has_claimed_today, last_signin_date FROM SigninRecords WHERE user_id = %s", (user_id,))
+    # 查詢用戶的簽到記錄，包含 signin_day、last_signin_date 與 weekly_streak
+    cursor.execute("SELECT signin_day, last_signin_date, weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
+
+    if not record:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "用戶簽到記錄不存在"}), 400
+
+    # 取得今天的台灣時間（格式視 get_today() 定義而定，例如 "YYYY-MM-DD"）
+    server_today = get_today()
+    # 取得本週的開始與結束日期（例如 start_of_week 為本週週一）
+    start_of_week, end_of_week = get_week_range()
+
+    # 如果今天正好是本週開始，就重置簽到資料（即新一週，UI 就重置為第一天）
+    if server_today == start_of_week:
+        signin_day = 1
+        weekly_streak = 1
+        # 更新資料庫的記錄
+        cursor.execute("""
+            UPDATE SigninRecords 
+            SET signin_day = %s, last_signin_date = %s, weekly_streak = %s 
+            WHERE user_id = %s
+        """, (signin_day, server_today, weekly_streak, user_id))
+        conn.commit()
+    else:
+        signin_day = record["signin_day"]
+        weekly_streak = record["weekly_streak"]
+
+    # 判斷今天是否已經簽到過
+    already_signed_in = (record["last_signin_date"] == server_today)
 
     cursor.close()
     conn.close()
 
-    if not record:
-        return jsonify({"error": "用戶簽到記錄不存在"}), 400
-
-    # ✅ **取得今天的台灣時間**
-    server_today = get_today()  # `get_today()` 已經回傳台灣時區
-
-    # ✅ **判斷今天是否已經簽到過**
-    already_signed_in = record["last_signin_date"] == server_today
-
     response_data = {
-        "signin_day": record["signin_day"],
-        "has_claimed_today": already_signed_in,  # 根據 `last_signin_date` 判斷
+        "signin_day": signin_day,
+        "weekly_streak": weekly_streak,
+        "has_claimed_today": already_signed_in,
         "last_signin_date": record["last_signin_date"],
-        "server_today": server_today  # ✅ **回傳後端的當前日期**
+        "server_today": server_today
     }
 
     return jsonify(response_data), 200
