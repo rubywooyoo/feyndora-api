@@ -780,6 +780,10 @@ def get_weekly_tasks(user_id):
     week_start = get_week_range()[0]  # 本週週一
     today = get_today()              # 今天（台灣日期）
 
+    # 刪除該用戶前一週（或非本週）的任務記錄
+    cursor.execute("DELETE FROM WeeklyTasks WHERE user_id = %s AND week_start <> %s", (user_id, week_start))
+    conn.commit()
+
     # 若今天就是週一，則重置本週的所有任務 is_claimed 為 0
     if today == week_start:
         cursor.execute("""
