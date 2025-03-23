@@ -288,10 +288,10 @@ def claim_signin_reward(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    today = get_today()  # 確保日期格式統一 (YYYY-MM-DD)
-    start_of_week, end_of_week = get_week_range()  # 取得本週的範圍（週一到週日）
+    today = get_today()  # 取得今天（台灣時區）
+    start_of_week, end_of_week = get_week_range()
 
-    # 🔹 檢查簽到狀態
+    # 🔹 查詢目前的簽到記錄
     cursor.execute("SELECT signin_day, last_signin_date, weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
 
@@ -300,29 +300,34 @@ def claim_signin_reward(user_id):
 
     last_signin_date = record["last_signin_date"]
     weekly_streak = record["weekly_streak"]
+    signin_day = record["signin_day"]
 
-    # 🔹 **防止重複簽到**
+    # ✅ 如果是新的一週，就重設 signin_day 與 weekly_streak 為 1
+    if today == start_of_week:
+        signin_day = 1
+        weekly_streak = 1
+        last_signin_date = today  # 為了讓後面比對不會誤判
+        cursor.execute("""
+            UPDATE SigninRecords 
+            SET signin_day = %s, last_signin_date = %s, weekly_streak = %s
+            WHERE user_id = %s
+        """, (signin_day, today, weekly_streak, user_id))
+        conn.commit()
+
+    # 🔹 防止重複簽到
     if last_signin_date == today:
         return jsonify({
             "error": "今天已經領取過獎勵",
             "last_signin_date": last_signin_date
         }), 400
 
-    signin_day = record["signin_day"]
-
-    # ✅ **更新連續簽到計算**
+    # ✅ 判斷是否為連續簽到（昨天有簽到）
     if last_signin_date and (last_signin_date + timedelta(days=1)) == today:
-        # 連續簽到，weekly_streak +1
         weekly_streak += 1
     else:
-        # 不是連續簽到，重置 weekly_streak
-        weekly_streak = 1
+        weekly_streak = 1  # 不是連續簽到就重設
 
-    # ✅ **如果是新的一週，重新計算連續簽到**
-    if today == start_of_week:
-        weekly_streak = 1
-
-    # 設定獎勵
+    # 設定獎勵內容（根據簽到第幾天）
     rewards = {
         1: {"coins": 100, "diamonds": 0},
         2: {"coins": 300, "diamonds": 0},
@@ -334,7 +339,7 @@ def claim_signin_reward(user_id):
     }
     reward = rewards.get(signin_day, {"coins": 0, "diamonds": 0})
 
-    # 🔹 更新 `SigninRecords` 記錄簽到
+    # 🔹 更新 SigninRecords
     next_signin_day = 1 if signin_day == 7 else signin_day + 1
     cursor.execute("""
         UPDATE SigninRecords 
@@ -342,7 +347,7 @@ def claim_signin_reward(user_id):
         WHERE user_id = %s
     """, (next_signin_day, today, weekly_streak, user_id))
 
-    # 🔹 更新 `Users` 表
+    # 🔹 更新 Users 的金幣與鑽石、總簽到天數
     cursor.execute("""
         UPDATE Users SET total_signin_days = total_signin_days + 1, 
         coins = coins + %s, diamonds = diamonds + %s WHERE user_id = %s
@@ -355,7 +360,7 @@ def claim_signin_reward(user_id):
     return jsonify({
         "message": "簽到成功",
         "signin_day": next_signin_day,
-        "weekly_streak": weekly_streak,  # ✅ 新增這個欄位
+        "weekly_streak": weekly_streak,
         "coins_received": reward["coins"],
         "diamonds_received": reward["diamonds"],
         "last_signin_date": today
