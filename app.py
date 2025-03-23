@@ -233,9 +233,9 @@ def check_signin_status(user_id):
         # 更新資料庫的記錄
         cursor.execute("""
             UPDATE SigninRecords 
-            SET signin_day = %s, last_signin_date = %s, weekly_streak = %s 
+            SET signin_day = %s, last_signin_date = NULL, weekly_streak = %s 
             WHERE user_id = %s
-        """, (signin_day, server_today, weekly_streak, user_id))
+        """, (signin_day, weekly_streak, user_id))
         conn.commit()
     else:
         signin_day = record["signin_day"]
@@ -306,12 +306,12 @@ def claim_signin_reward(user_id):
     if today == start_of_week:
         signin_day = 1
         weekly_streak = 1
-        last_signin_date = today  # 為了讓後面比對不會誤判
+        last_signin_date = None #改為 None  
         cursor.execute("""
             UPDATE SigninRecords 
-            SET signin_day = %s, last_signin_date = %s, weekly_streak = %s
+            SET signin_day = %s, last_signin_date = NULL, weekly_streak = %s
             WHERE user_id = %s
-        """, (signin_day, today, weekly_streak, user_id))
+        """, (signin_day, weekly_streak, user_id))
         conn.commit()
 
     # 🔹 防止重複簽到
