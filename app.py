@@ -226,35 +226,19 @@ def check_signin_status(user_id):
     # 取得本週的開始與結束日期（例如 start_of_week 為本週週一）
     start_of_week, end_of_week = get_week_range()
 
-    # 如果今天正好是本週開始，就重置簽到資料（即新一週，UI 就重置為第一天）
-    if server_today == start_of_week:
-        signin_day = 1
-        weekly_streak = 1
-        # 更新資料庫的記錄
-        cursor.execute("""
-            UPDATE SigninRecords 
-            SET signin_day = %s, last_signin_date = NULL, weekly_streak = %s 
-            WHERE user_id = %s
-        """, (signin_day, weekly_streak, user_id))
-        conn.commit()
-    else:
-        signin_day = record["signin_day"]
-        weekly_streak = record["weekly_streak"]
-
     # 判斷今天是否已經簽到過
     already_signed_in = (record["last_signin_date"] == server_today)
 
-    cursor.close()
-    conn.close()
-
     response_data = {
-        "signin_day": signin_day,
-        "weekly_streak": weekly_streak,
+        "signin_day": record["signin_day"],
+        "weekly_streak": record["weekly_streak"],
         "has_claimed_today": already_signed_in,
         "last_signin_date": record["last_signin_date"],
         "server_today": server_today
     }
 
+    cursor.close()
+    conn.close()
     return jsonify(response_data), 200
 
 # ✅ 初始化簽到記錄，以防用戶沒有簽到過
@@ -302,18 +286,6 @@ def claim_signin_reward(user_id):
     weekly_streak = record["weekly_streak"]
     signin_day = record["signin_day"]
 
-    # ✅ 如果是新的一週，就重設 signin_day 與 weekly_streak 為 1
-    if today == start_of_week:
-        signin_day = 1
-        weekly_streak = 1
-        last_signin_date = None #改為 None  
-        cursor.execute("""
-            UPDATE SigninRecords 
-            SET signin_day = %s, last_signin_date = NULL, weekly_streak = %s
-            WHERE user_id = %s
-        """, (signin_day, weekly_streak, user_id))
-        conn.commit()
-
     # 🔹 防止重複簽到
     if last_signin_date == today:
         return jsonify({
@@ -321,8 +293,12 @@ def claim_signin_reward(user_id):
             "last_signin_date": last_signin_date
         }), 400
 
+    # ✅ 檢查是否是新的一週的第一次簽到
+    if last_signin_date and last_signin_date < start_of_week:
+        signin_day = 1
+        weekly_streak = 1
     # ✅ 判斷是否為連續簽到（昨天有簽到）
-    if last_signin_date and (last_signin_date + timedelta(days=1)) == today:
+    elif last_signin_date and (last_signin_date + timedelta(days=1)) == today:
         weekly_streak += 1
     else:
         weekly_streak = 1  # 不是連續簽到就重設
