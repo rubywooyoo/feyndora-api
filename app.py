@@ -117,11 +117,13 @@ def daily_rankings():
     cursor.execute("""
         SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.ranking
         FROM (
-            SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                   RANK() OVER (ORDER BY L.daily_points DESC) AS ranking
+            SELECT U.user_id, U.username, U.avatar_id, 
+                   SUM(L.daily_points) AS daily_points,
+                   RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
             FROM LearningPointsLog L
             JOIN Users U ON L.user_id = U.user_id
             WHERE L.date = %s
+            GROUP BY U.user_id, U.username, U.avatar_id
         ) t
         ORDER BY t.ranking
         LIMIT 10
@@ -134,11 +136,13 @@ def daily_rankings():
         cursor.execute("""
             SELECT t.user_id, t.username, t.avatar_id, t.daily_points, t.ranking
             FROM (
-                SELECT U.user_id, U.username, U.avatar_id, L.daily_points,
-                       RANK() OVER (ORDER BY L.daily_points DESC) AS ranking
+                SELECT U.user_id, U.username, U.avatar_id, 
+                       SUM(L.daily_points) AS daily_points,
+                       RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
                 FROM LearningPointsLog L
                 JOIN Users U ON L.user_id = U.user_id
                 WHERE L.date = %s
+                GROUP BY U.user_id, U.username, U.avatar_id
             ) t
             WHERE t.user_id = %s
         """, (query_date, user_id))
@@ -167,7 +171,8 @@ def weekly_rankings():
     cursor.execute("""
         SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.ranking
         FROM (
-            SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
+            SELECT U.user_id, U.username, U.avatar_id, 
+                   SUM(L.daily_points) AS weekly_points,
                    RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
             FROM LearningPointsLog L
             JOIN Users U ON L.user_id = U.user_id
@@ -185,7 +190,8 @@ def weekly_rankings():
         cursor.execute("""
             SELECT t.user_id, t.username, t.avatar_id, t.weekly_points, t.ranking
             FROM (
-                SELECT U.user_id, U.username, U.avatar_id, SUM(L.daily_points) AS weekly_points,
+                SELECT U.user_id, U.username, U.avatar_id, 
+                       SUM(L.daily_points) AS weekly_points,
                        RANK() OVER (ORDER BY SUM(L.daily_points) DESC) AS ranking
                 FROM LearningPointsLog L
                 JOIN Users U ON L.user_id = U.user_id
