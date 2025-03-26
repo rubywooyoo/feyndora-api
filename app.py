@@ -960,10 +960,10 @@ def get_course_review(course_id):
             "understanding_score": 50,
             "expression_score": 50,
             "interaction_score": 50,
-            "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解～",
-            "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
-            "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
-            "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。"
+            "teacher_comment": "今天的表現有點糟糕！",
+            "student1_feedback": "你把複雜的概念講得不太清楚！尤其是在解釋那個難懂的部分時。",
+            "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。但老師聲音不好聽！",
+            "student3_feedback": "你提出的觀點很有創意！嘻嘻！！"
         }
 
     # 查詢課程積分
