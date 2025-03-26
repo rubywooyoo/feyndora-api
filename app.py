@@ -936,5 +936,56 @@ def remove_course():
         return jsonify({"message": "課程已取消收藏"}), 200
     else:
         return jsonify({"error": "該課程未收藏或已刪除"}), 400
+        
+# ✅ 獲取課程回顧資料
+@app.route('/course_review/<int:course_id>', methods=['GET'])
+def get_course_review(course_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 查詢課程評價資料
+    cursor.execute("""
+        SELECT accuracy_score, understanding_score, expression_score, interaction_score,
+               teacher_comment, student1_feedback, student2_feedback, student3_feedback
+        FROM CourseReviews
+        WHERE course_id = %s
+    """, (course_id,))
+    
+    review_data = cursor.fetchone()
+    
+    # 如果沒有找到評價資料，返回預設值
+    if not review_data:
+        review_data = {
+            "accuracy_score": 50,
+            "understanding_score": 50,
+            "expression_score": 50,
+            "interaction_score": 50,
+            "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解～",
+            "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
+            "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
+            "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。"
+        }
+
+    # 查詢課程積分
+    cursor.execute("""
+        SELECT earned_points
+        FROM CoursePointsLog
+        WHERE course_id = %s
+    """, (course_id,))
+    
+    points_data = cursor.fetchone()
+    earned_points = points_data['earned_points'] if points_data else 156  # 預設值
+
+    cursor.close()
+    conn.close()
+
+    # 組合回傳資料
+    response_data = {
+        **review_data,
+        "earned_points": earned_points
+    }
+
+    return jsonify(response_data)
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
