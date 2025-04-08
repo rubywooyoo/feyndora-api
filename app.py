@@ -218,7 +218,6 @@ def check_signin_status(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # 查詢用戶的簽到記錄，包含 signin_day、last_signin_date 與 weekly_streak
     cursor.execute("SELECT signin_day, last_signin_date, weekly_streak FROM SigninRecords WHERE user_id = %s", (user_id,))
     record = cursor.fetchone()
 
@@ -227,20 +226,29 @@ def check_signin_status(user_id):
         conn.close()
         return jsonify({"error": "用戶簽到記錄不存在"}), 400
 
-    # 取得今天的台灣時間（格式視 get_today() 定義而定，例如 "YYYY-MM-DD"）
     server_today = get_today()
-    # 取得本週的開始與結束日期（例如 start_of_week 為本週週一）
     start_of_week, end_of_week = get_week_range()
+    
+    last_signin_date = record["last_signin_date"]
+    signin_day = record["signin_day"]
+    weekly_streak = record["weekly_streak"]
 
-    # 判斷今天是否已經簽到過
-    already_signed_in = (record["last_signin_date"] == server_today)
+    # 新增：判斷是否是新的一週
+    is_new_week = False
+    if last_signin_date and last_signin_date < start_of_week:
+        is_new_week = True
+        signin_day = 1  # 重置為第一天
+        weekly_streak = 0  # 重置連續簽到
+
+    already_signed_in = (last_signin_date == server_today)
 
     response_data = {
-        "signin_day": record["signin_day"],
-        "weekly_streak": record["weekly_streak"],
+        "signin_day": signin_day,
+        "weekly_streak": weekly_streak,
         "has_claimed_today": already_signed_in,
-        "last_signin_date": record["last_signin_date"],
-        "server_today": server_today
+        "last_signin_date": last_signin_date,
+        "server_today": server_today,
+        "is_new_week": is_new_week  # 新增這個回傳值
     }
 
     cursor.close()
