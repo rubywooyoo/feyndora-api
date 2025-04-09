@@ -995,5 +995,83 @@ def get_course_review(course_id):
 
     return jsonify(response_data)
 
+# ✅ 抽卡
+@app.route('/draw_card/<int:user_id>', methods=['POST'])
+def draw_card(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 獲取抽卡類型（普通/高級）
+    draw_type = request.args.get('type', 'normal')
+    
+    # 獲取用戶當前資源
+    cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        return jsonify({"error": "用戶不存在"}), 404
+    
+    # 檢查資源是否足夠
+    if draw_type == 'normal' and user['coins'] < 500:
+        return jsonify({"error": "金幣不足"}), 400
+    elif draw_type == 'premium' and user['diamonds'] < 3:
+        return jsonify({"error": "鑽石不足"}), 400
+    
+    # 設定抽卡機率
+    if draw_type == 'normal':
+        probabilities = {
+            'N': 0.7,  # 普通卡 70%
+            'R': 0.25, # 稀有卡 25%
+            'SR': 0.05 # 超稀有卡 5%
+        }
+    else:
+        probabilities = {
+            'N': 0.5,  # 普通卡 50%
+            'R': 0.35, # 稀有卡 35%
+            'SR': 0.15 # 超稀有卡 15%
+        }
+    
+    # 隨機抽取卡片
+    import random
+    rarity = random.choices(list(probabilities.keys()), weights=list(probabilities.values()))[0]
+    
+    # 根據稀有度選擇卡片
+    cursor.execute("""
+        SELECT card_name FROM Cards 
+        WHERE rarity = %s 
+        ORDER BY RAND() 
+        LIMIT 1
+    """, (rarity,))
+    card = cursor.fetchone()
+    
+    # 扣除資源
+    if draw_type == 'normal':
+        cursor.execute("UPDATE Users SET coins = coins - 500 WHERE user_id = %s", (user_id,))
+    else:
+        cursor.execute("UPDATE Users SET diamonds = diamonds - 3 WHERE user_id = %s", (user_id,))
+    
+    # 記錄抽卡結果（如果已經有這張卡，就更新獲得時間）
+    cursor.execute("""
+        INSERT INTO UserCards (user_id, card_name, rarity, obtained_at)
+        VALUES (%s, %s, %s, NOW())
+        ON DUPLICATE KEY UPDATE obtained_at = NOW()
+    """, (user_id, card['card_name'], rarity))
+    
+    # 獲取更新後的資源數量
+    cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    updated_user = cursor.fetchone()
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        "success": True,
+        "card_name": card['card_name'],
+        "rarity": rarity,
+        "remaining_coins": updated_user['coins'],
+        "remaining_diamonds": updated_user['diamonds']
+    }), 200
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
