@@ -994,6 +994,121 @@ def get_course_review(course_id):
     }
 
     return jsonify(response_data)
+    
+# 😍 抽卡
+@app.route('/draw_card/<int:user_id>', methods=['POST'])
+def draw_card(user_id):
+    draw_type = request.args.get('type', 'normal')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 檢查用戶資源是否足夠
+    cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    cost = 500 if draw_type == 'normal' else 3
+    if draw_type == 'normal' and user['coins'] < cost:
+        return jsonify({'error': 'Insufficient coins'}), 400
+    elif draw_type == 'premium' and user['diamonds'] < cost:
+        return jsonify({'error': 'Insufficient diamonds'}), 400
+    
+    # 抽卡機率設定
+    if draw_type == 'normal':
+        weights = {
+            '絕密': 0.05,    # 5%
+            '機密': 0.35,    # 35%
+            '隱密': 0.60     # 60%
+        }
+    else:  # premium
+        weights = {
+            '絕密': 0.15,    # 15%
+            '機密': 0.45,    # 45%
+            '隱密': 0.40     # 40%
+        }
+    
+    # 根據稀有度抽取卡片
+    rarity = random.choices(list(weights.keys()), list(weights.values()))[0]
+    cursor.execute("SELECT * FROM Cards WHERE rarity = %s ORDER BY RAND() LIMIT 1", (rarity,))
+    card = cursor.fetchone()
+    
+    # 扣除資源
+    if draw_type == 'normal':
+        cursor.execute("UPDATE Users SET coins = coins - %s WHERE user_id = %s", (cost, user_id))
+    else:
+        cursor.execute("UPDATE Users SET diamonds = diamonds - %s WHERE user_id = %s", (cost, user_id))
+    
+    # 記錄抽卡結果
+    cursor.execute("""
+        INSERT INTO UserCards (user_id, card_id, obtained_date)
+        VALUES (%s, %s, NOW())
+    """, (user_id, card['card_id']))
+    
+    # 獲取更新後的資源數量
+    cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+    updated_resources = cursor.fetchone()
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        'success': True,
+        'card_name': card['name'],
+        'rarity': card['rarity'],
+        'remaining_coins': updated_resources['coins'],
+        'remaining_diamonds': updated_resources['diamonds']
+    })
+
+# 🐶 選擇老師
+@app.route('/select_teacher', methods=['POST'])
+def select_teacher():
+    data = request.json
+    user_id = data.get('user_id')
+    card_id = data.get('card_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 先將該用戶所有卡片設為未選中
+    cursor.execute("UPDATE UserCards SET is_selected = FALSE WHERE user_id = %s", (user_id,))
+    
+    # 設置選中的卡片
+    cursor.execute("""
+        UPDATE UserCards 
+        SET is_selected = TRUE 
+        WHERE user_id = %s AND card_id = %s
+    """, (user_id, card_id))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({'message': '老師選擇成功'}), 200
+
+# 🥳 獲取當前選擇的老師
+@app.route('/current_teacher/<int:user_id>', methods=['GET'])
+def get_current_teacher(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute("""
+        SELECT c.name, c.rarity 
+        FROM UserCards uc
+        JOIN Cards c ON uc.card_id = c.card_id
+        WHERE uc.user_id = %s AND uc.is_selected = TRUE
+    """, (user_id,))
+    
+    teacher = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not teacher:
+        return jsonify({'error': '未選擇老師'}), 404
+        
+    return jsonify(teacher), 200
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
