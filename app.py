@@ -1021,7 +1021,7 @@ def draw_card(user_id):
         elif draw_type == 'premium' and user['diamonds'] < 3:
             return jsonify({"error": "鑽石不足"}), 400
         
-        # 設定抽卡機率（根據你的稀有度設計）
+        # 設定抽卡機率
         if draw_type == 'normal':
             probabilities = {
                 '絕密': 0.7,   # 絕密 70%
@@ -1058,7 +1058,7 @@ def draw_card(user_id):
         else:
             cursor.execute("UPDATE Users SET diamonds = diamonds - 3 WHERE user_id = %s", (user_id,))
         
-        # 記錄抽卡結果（如果已經有這張卡，就更新獲得時間）
+        # 記錄抽卡結果（使用 UserCards 表）
         cursor.execute("""
             INSERT INTO UserCards (user_id, card_id, obtained_date)
             VALUES (%s, %s, NOW())
