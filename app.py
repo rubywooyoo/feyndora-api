@@ -1089,5 +1089,70 @@ def draw_card(user_id):
             conn.close()
         return jsonify({"error": "抽卡過程中發生錯誤"}), 500
 
+# ✅ 獲取用戶擁有的卡片
+@app.route('/user_cards/<int:user_id>', methods=['GET'])
+def get_user_cards(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 查询用户拥有的所有卡片
+    cursor.execute("""
+        SELECT C.card_id, C.name, C.rarity, UC.is_selected
+        FROM Cards C
+        JOIN UserCards UC ON C.card_id = UC.card_id
+        WHERE UC.user_id = %s
+    """, (user_id,))
+    
+    cards = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        "cards": cards
+    }), 200
+
+# ✅ 選擇老師卡片
+@app.route('/select_teacher_card', methods=['POST'])
+def select_teacher_card():
+    data = request.json
+    user_id = data.get('user_id')
+    card_id = data.get('card_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 先将该用户所有卡片设置为未选中
+        cursor.execute("""
+            UPDATE UserCards 
+            SET is_selected = 0 
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        # 将选中的卡片设置为已选中
+        cursor.execute("""
+            UPDATE UserCards 
+            SET is_selected = 1 
+            WHERE user_id = %s AND card_id = %s
+        """, (user_id, card_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "message": "老師卡片選擇成功",
+            "selected_card_id": card_id
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "error": f"選擇老師卡片發生錯誤: {str(e)}"
+        }), 500
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8000)
