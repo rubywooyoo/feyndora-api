@@ -592,7 +592,7 @@ def toggle_favorite(course_id):
     return jsonify({"message": "收藏狀態已更新"}), 200
 
 # ✅ 課程進度更新
-"""@app.route('/update_progress', methods=['POST'])
+'''@app.route('/update_progress', methods=['POST'])
 def update_progress():
     data = request.json
     conn = get_db_connection()
@@ -625,7 +625,7 @@ def continue_course():
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200 """
+    return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200 '''
 
 # ✅ 課程進度更新
 @app.route('/update_progress', methods=['POST'])
