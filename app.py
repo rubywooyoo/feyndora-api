@@ -513,6 +513,42 @@ def get_current_stage(user_id):
         "progress_classroom": progress_classroom
     }), 200
 
+# ✅ 取得最新上完的課程
+@app.route('/latest_course/<int:user_id>', methods=['GET'])
+def get_latest_course(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # 直接獲取最新的課程（不一定是正在進行的）
+        cursor.execute("""
+            SELECT course_id, course_name, current_stage, progress, 
+                   progress_one_to_one, progress_classroom
+            FROM Courses
+            WHERE user_id = %s
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """, (user_id,))
+        
+        course = cursor.fetchone()
+        if not course:
+            return jsonify({"hasCourse": False}), 200
+            
+        return jsonify({
+            "hasCourse": True,
+            "course_id": course['course_id'],
+            "course_name": course['course_name'],
+            "current_stage": course['current_stage'],
+            "progress": course['progress'],
+            "progress_one_to_one": course['progress_one_to_one'],
+            "progress_classroom": course['progress_classroom']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 # ✅ VR結束課程時更新current_stage
 @app.route('/finish_course', methods=['POST'])
