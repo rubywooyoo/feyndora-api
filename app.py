@@ -592,7 +592,7 @@ def toggle_favorite(course_id):
     return jsonify({"message": "收藏狀態已更新"}), 200
 
 # ✅ 課程進度更新
-@app.route('/update_progress', methods=['POST'])
+"""@app.route('/update_progress', methods=['POST'])
 def update_progress():
     data = request.json
     conn = get_db_connection()
@@ -625,7 +625,114 @@ def continue_course():
     conn.commit()
     cursor.close()
     conn.close()
-    return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200
+    return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200 """
+
+# ✅ 課程進度更新
+@app.route('/update_progress', methods=['POST'])
+def update_progress():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "請求數據為空"}), 400
+            
+        required_fields = ['progress', 'progress_one_to_one', 'progress_classroom', 'current_stage', 'course_id']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"缺少必要字段: {field}"}), 400
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "資料庫連接失敗"}), 500
+            
+        cursor = conn.cursor()
+        
+        # 先檢查課程是否存在
+        cursor.execute("SELECT 1 FROM Courses WHERE course_id = %s", (data['course_id'],))
+        if not cursor.fetchone():
+            return jsonify({"error": "課程不存在"}), 404
+
+        # 更新進度
+        cursor.execute("""
+            UPDATE Courses
+            SET progress = %s, 
+                progress_one_to_one = %s, 
+                progress_classroom = %s, 
+                current_stage = %s, 
+                is_vr_ready = 0, 
+                updated_at = NOW()
+            WHERE course_id = %s
+        """, (
+            data['progress'], 
+            data['progress_one_to_one'], 
+            data['progress_classroom'], 
+            data['current_stage'], 
+            data['course_id']
+        ))
+        
+        if cursor.rowcount == 0:
+            return jsonify({"error": "更新失敗，可能是課程ID不存在"}), 404
+            
+        conn.commit()
+        return jsonify({"message": "進度更新成功"}), 200
+        
+    except Exception as e:
+        print(f"更新進度錯誤: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+        return jsonify({"error": "更新進度時發生錯誤"}), 500
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+# ✅ 繼續上課
+@app.route('/continue_course', methods=['POST'])
+def continue_course():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "請求數據為空"}), 400
+            
+        course_id = data.get('course_id')
+        if not course_id:
+            return jsonify({"error": "缺少課程ID"}), 400
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "資料庫連接失敗"}), 500
+            
+        cursor = conn.cursor()
+        
+        # 先檢查課程是否存在
+        cursor.execute("SELECT 1 FROM Courses WHERE course_id = %s", (course_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "課程不存在"}), 404
+            
+        # 更新課程狀態
+        cursor.execute("""
+            UPDATE Courses
+            SET is_vr_ready = TRUE, 
+                vr_started_at = NOW()
+            WHERE course_id = %s
+        """, (course_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({"error": "更新課程狀態失敗"}), 500
+            
+        conn.commit()
+        return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200
+        
+    except Exception as e:
+        print(f"繼續課程錯誤: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+        return jsonify({"error": "繼續課程時發生錯誤"}), 500
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 # ✅ 更新暱稱與頭像
 @app.route('/update_nickname/<int:user_id>', methods=['PUT'])
