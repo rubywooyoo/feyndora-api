@@ -1139,7 +1139,7 @@ def get_course_review(course_id):
     return jsonify(response_data)
 
 # ✅ 抽卡
-@app.route('/draw_card/<int:user_id>', methods=['POST'])
+'''@app.route('/draw_card/<int:user_id>', methods=['POST'])
 def draw_card(user_id):
     try:
         conn = get_db_connection()
@@ -1223,6 +1223,108 @@ def draw_card(user_id):
             "rarity": card['rarity'],
             "remaining_coins": updated_user['coins'],
             "remaining_diamonds": updated_user['diamonds']
+        }), 200
+        
+    except Exception as e:
+        print(f"抽卡錯誤: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({"error": "抽卡過程中發生錯誤"}), 500'''
+
+@app.route('/draw_card/<int:user_id>', methods=['POST'])
+def draw_card(user_id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "資料庫連接失敗"}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        # 獲取抽卡類型（普通/高級）
+        draw_type = request.args.get('type', 'normal')
+        
+        # 獲取用戶當前資源
+        cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({"error": "用戶不存在"}), 404
+        
+        # 檢查資源是否足夠
+        if draw_type == 'normal' and user['coins'] < 500:
+            return jsonify({"error": "金幣不足"}), 400
+        elif draw_type == 'premium' and user['diamonds'] < 3:
+            return jsonify({"error": "鑽石不足"}), 400
+        
+        # 設定抽卡機率
+        if draw_type == 'normal':
+            probabilities = {
+                '絕密': 0.05,   # 絕密 5%
+                '機密': 0.25,  # 機密 25%
+                '隱密': 0.7   # 隱密 70%
+            }
+        else:
+            probabilities = {
+                '絕密': 0.15,   # 絕密 15%
+                '機密': 0.35,  # 機密 35%
+                '隱密': 0.5   # 隱密 50%
+            }
+        
+        # 隨機抽取卡片
+        import random
+        rarity = random.choices(list(probabilities.keys()), weights=list(probabilities.values()))[0]
+        
+        # 根據稀有度選擇卡片
+        cursor.execute("""
+            SELECT card_id, name, rarity 
+            FROM Cards 
+            WHERE rarity = %s 
+            ORDER BY RAND() 
+            LIMIT 1
+        """, (rarity,))
+        card = cursor.fetchone()
+        
+        if not card:
+            return jsonify({"error": "找不到對應稀有度的卡片"}), 500
+
+        # 檢查用戶是否已經擁有這張卡片
+        cursor.execute("""
+            SELECT COUNT(*) as count 
+            FROM UserCards 
+            WHERE user_id = %s AND card_id = %s
+        """, (user_id, card['card_id']))
+        card_count = cursor.fetchone()['count']
+        
+        # 扣除資源
+        if draw_type == 'normal':
+            cursor.execute("UPDATE Users SET coins = coins - 500 WHERE user_id = %s", (user_id,))
+        else:
+            cursor.execute("UPDATE Users SET diamonds = diamonds - 3 WHERE user_id = %s", (user_id,))
+        
+        # 記錄抽卡結果（使用 UserCards 表）
+        cursor.execute("""
+            INSERT INTO UserCards (user_id, card_id, obtained_date)
+            VALUES (%s, %s, NOW())
+            ON DUPLICATE KEY UPDATE obtained_date = NOW()
+        """, (user_id, card['card_id']))
+        
+        # 獲取更新後的資源數量
+        cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
+        updated_user = cursor.fetchone()
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "card_id": card['card_id'],
+            "card_name": card['name'],
+            "rarity": card['rarity'],
+            "remaining_coins": updated_user['coins'],
+            "remaining_diamonds": updated_user['diamonds'],
+            "is_new_teacher_card": (card_count == 0)  # 如果是第一次獲得這張卡片就是 true
         }), 200
         
     except Exception as e:
