@@ -1260,15 +1260,8 @@ def get_course_review(course_id):
                 "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
                 "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
                 "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。",
-                "good_points": json.dumps([
-                    "概念解釋清晰準確",
-                    "舉例生動有趣",
-                    "與同學互動熱絡"
-                ], ensure_ascii=False),
-                "improvement_points": json.dumps([
-                    "可以多分享實際應用場景",
-                    "建議控制節奏，不要說太快"
-                ], ensure_ascii=False)
+                "good_points": ["概念解釋清晰準確", "舉例生動有趣", "與同學互動熱絡"],
+                "improvement_points": ["可以多分享實際應用場景", "建議控制節奏，不要說太快"]
             }
 
         # 查詢課程積分
@@ -1319,7 +1312,6 @@ def get_course_review(course_id):
     finally:
         cursor.close()
         conn.close()
-
 # ✅ 抽卡
 @app.route('/draw_card/<int:user_id>', methods=['POST'])
 def draw_card(user_id):
