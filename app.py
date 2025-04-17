@@ -1232,67 +1232,93 @@ def draw_card(user_id):
             conn.close()
         return jsonify({"error": "抽卡過程中發生錯誤"}), 500'''
 
-# ✅ 獲取課程回顧資料
 @app.route('/course_review/<int:course_id>', methods=['GET'])
 def get_course_review(course_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # 查詢課程評價資料（包含重點回顧）
-    cursor.execute("""
-        SELECT accuracy_score, understanding_score, expression_score, interaction_score,
-               teacher_comment, student1_feedback, student2_feedback, student3_feedback,
-               good_points, improvement_points
-        FROM CourseReviews
-        WHERE course_id = %s
-    """, (course_id,))
-    
-    review_data = cursor.fetchone()
-    
-    # 如果沒有找到評價資料，返回預設值
-    if not review_data:
-        review_data = {
-            "accuracy_score": 50,
-            "understanding_score": 50,
-            "expression_score": 50,
-            "interaction_score": 50,
-            "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解。",
-            "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
-            "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
-            "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。",
-            "good_points": json.dumps([
-                "概念解釋清晰準確",
-                "舉例生動有趣",
-                "與同學互動熱絡"
-            ], ensure_ascii=False),
-            "improvement_points": json.dumps([
-                "可以多分享實際應用場景",
-                "建議控制節奏，不要說太快"
-            ], ensure_ascii=False)
+    try:
+        # 查詢課程評價資料（包含重點回顧）
+        cursor.execute("""
+            SELECT accuracy_score, understanding_score, expression_score, interaction_score,
+                   teacher_comment, student1_feedback, student2_feedback, student3_feedback,
+                   good_points, improvement_points
+            FROM CourseReviews
+            WHERE course_id = %s
+        """, (course_id,))
+        
+        review_data = cursor.fetchone()
+        
+        # 如果沒有找到評價資料，返回預設值
+        if not review_data:
+            review_data = {
+                "accuracy_score": 50,
+                "understanding_score": 50,
+                "expression_score": 50,
+                "interaction_score": 50,
+                "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解。",
+                "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
+                "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
+                "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。",
+                "good_points": json.dumps([
+                    "概念解釋清晰準確",
+                    "舉例生動有趣",
+                    "與同學互動熱絡"
+                ], ensure_ascii=False),
+                "improvement_points": json.dumps([
+                    "可以多分享實際應用場景",
+                    "建議控制節奏，不要說太快"
+                ], ensure_ascii=False)
+            }
+
+        # 查詢課程積分
+        cursor.execute("""
+            SELECT earned_points
+            FROM CoursePointsLog
+            WHERE course_id = %s
+        """, (course_id,))
+        
+        points_data = cursor.fetchone()
+        earned_points = points_data['earned_points'] if points_data else 156
+
+        # 處理 JSON 欄位
+        good_points = []
+        improvement_points = []
+        
+        try:
+            if review_data.get('good_points'):
+                good_points = json.loads(review_data['good_points'])
+            if review_data.get('improvement_points'):
+                improvement_points = json.loads(review_data['improvement_points'])
+        except json.JSONDecodeError:
+            # 如果 JSON 解析失敗，使用空陣列
+            good_points = []
+            improvement_points = []
+
+        # 組合回傳資料
+        response_data = {
+            "accuracy_score": review_data.get("accuracy_score", 50),
+            "understanding_score": review_data.get("understanding_score", 50),
+            "expression_score": review_data.get("expression_score", 50),
+            "interaction_score": review_data.get("interaction_score", 50),
+            "teacher_comment": review_data.get("teacher_comment", ""),
+            "student1_feedback": review_data.get("student1_feedback", ""),
+            "student2_feedback": review_data.get("student2_feedback", ""),
+            "student3_feedback": review_data.get("student3_feedback", ""),
+            "earned_points": earned_points,
+            "good_points": good_points,
+            "improvement_points": improvement_points
         }
 
-    # 查詢課程積分
-    cursor.execute("""
-        SELECT earned_points
-        FROM CoursePointsLog
-        WHERE course_id = %s
-    """, (course_id,))
-    
-    points_data = cursor.fetchone()
-    earned_points = points_data['earned_points'] if points_data else 156
+        return jsonify(response_data)
 
-    # 組合回傳資料
-    response_data = {
-        **review_data,
-        "earned_points": earned_points,
-        "good_points": json.loads(review_data['good_points']) if review_data.get('good_points') else [],
-        "improvement_points": json.loads(review_data['improvement_points']) if review_data.get('improvement_points') else []
-    }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-    cursor.close()
-    conn.close()
-
-    return jsonify(response_data)
+    finally:
+        cursor.close()
+        conn.close()
 
 # ✅ 抽卡
 @app.route('/draw_card/<int:user_id>', methods=['POST'])
