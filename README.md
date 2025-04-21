@@ -58,21 +58,7 @@
 - 每週自動重置簽到記錄
 
 ---
-
-## 🔧 使用方式
-
-```bash
-# 1. 安裝所需套件
-pip install -r requirements.txt
-
-# 2. 設定環境變數（可選）
-export DATABASE_URL=mysql://user:password@host:port/database
-
-# 3. 啟動伺服器
-python app.py
-
----
-🙋‍♀️ 作者
+## 🙋‍♀️ 作者
 
 魏莘儒
 資訊管理系 | 國立中正大學
