@@ -446,7 +446,7 @@ def get_user(user_id):
     return jsonify(user), 200
 
 # ✅ current_stage（每次呼叫都即時計算進度+更新progress+回傳最新current_stage）
-@app.route('/current_stage/<int:user_id>', methods=['GET'])
+'''@app.route('/current_stage/<int:user_id>', methods=['GET'])
 def get_current_stage(user_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -512,6 +512,76 @@ def get_current_stage(user_id):
         "progress": total_progress,
         "progress_one_to_one": progress_one_to_one,
         "progress_classroom": progress_classroom
+    }), 200'''
+
+# ✅ current_stage（每次呼叫都即時計算進度+更新progress+回傳最新current_stage）
+@app.route('/current_stage/<int:user_id>', methods=['GET'])
+def get_current_stage(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 取最新ready課程
+    cursor.execute("""
+        SELECT course_id, course_name, current_stage, progress, progress_one_to_one, progress_classroom, teacher_card_id
+        FROM Courses
+        WHERE user_id = %s AND is_vr_ready = TRUE
+        ORDER BY vr_started_at DESC
+        LIMIT 1
+    """, (user_id,))
+
+    course = cursor.fetchone()
+    if not course:
+        return jsonify({"hasReadyCourse": False}), 200
+
+    course_id = course['course_id']
+
+    # 計算一對一目錄進度
+    cursor.execute("""
+        SELECT COUNT(*) as total, SUM(is_completed) as completed
+        FROM CourseChapters
+        WHERE course_id = %s AND chapter_type = 'one_to_one'
+    """, (course_id,))
+    one_to_one_progress = cursor.fetchone()
+    progress_one_to_one = (one_to_one_progress['completed'] / one_to_one_progress['total']) * 100 if one_to_one_progress['total'] > 0 else 0
+
+    # 計算一對多目錄進度
+    cursor.execute("""
+        SELECT COUNT(*) as total, SUM(is_completed) as completed
+        FROM CourseChapters
+        WHERE course_id = %s AND chapter_type = 'classroom'
+    """, (course_id,))
+    classroom_progress = cursor.fetchone()
+    progress_classroom = (classroom_progress['completed'] / classroom_progress['total']) * 100 if classroom_progress['total'] > 0 else 0
+
+    # 重新計算總progress (可自行決定計算邏輯)
+    total_progress = (progress_one_to_one + progress_classroom) / 2  # 這裡假設各佔50%權重
+
+    # 判斷是否要更新current_stage
+    if course['current_stage'] == 'one_to_one' and progress_one_to_one >= 100:
+        course['current_stage'] = 'classroom'
+    elif course['current_stage'] == 'classroom' and progress_classroom >= 100:
+        course['current_stage'] = 'completed'
+
+    # 更新最新進度和階段回到Courses
+    cursor.execute("""
+        UPDATE Courses
+        SET progress = %s, progress_one_to_one = %s, progress_classroom = %s, current_stage = %s
+        WHERE course_id = %s
+    """, (total_progress, progress_one_to_one, progress_classroom, course['current_stage'], course_id))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "hasReadyCourse": True,
+        "course_id": course_id,
+        "course_name": course['course_name'],
+        "current_stage": course['current_stage'],
+        "progress": total_progress,
+        "progress_one_to_one": progress_one_to_one,
+        "progress_classroom": progress_classroom,
+        "teacher_card_id": course['teacher_card_id']  # 新增：返回老师卡片ID
     }), 200
 
 # ✅ 取得最新上完的課程
