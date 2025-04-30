@@ -847,26 +847,19 @@ def continue_course():
         if not cursor.fetchone():
             return jsonify({"error": "課程不存在"}), 404
             
-        # 獲取台灣時間
-        taiwan_time = get_taiwan_now()
-        
         # 更新課程狀態，使用台灣時區
         cursor.execute("""
             UPDATE Courses
             SET is_vr_ready = TRUE, 
-                vr_started_at = CONVERT_TZ(%s, '+00:00', '+08:00'),
-                updated_at = NOW()
+                vr_started_at = %s
             WHERE course_id = %s
-        """, (taiwan_time, course_id))
+        """, (get_taiwan_now(), course_id))
         
         if cursor.rowcount == 0:
             return jsonify({"error": "更新課程狀態失敗"}), 500
             
         conn.commit()
-        return jsonify({
-            "message": "課程已標記為 VR Ready，並開始 VR 時間",
-            "vr_started_at": taiwan_time.strftime('%Y-%m-%d %H:%M:%S')
-        }), 200
+        return jsonify({"message": "課程已標記為 VR Ready，並開始 VR 時間"}), 200
         
     except Exception as e:
         print(f"繼續課程錯誤: {str(e)}")
