@@ -792,6 +792,33 @@ def update_progress():
             cursor.close()
         if 'conn' in locals():
             conn.close()
+            
+# ✅ 拿取課程目錄進度
+@app.route('/get_chapter_progress', methods=['GET'])
+def get_chapter_progress():
+    course_id = request.args.get('course_id')
+    chapter_type = request.args.get('chapter_type')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # 获取完成和总章节数
+    cursor.execute("""
+        SELECT COUNT(*) as total, 
+               SUM(is_completed) as completed
+        FROM CourseChapters
+        WHERE course_id = %s AND chapter_type = %s
+    """, (course_id, chapter_type))
+    
+    result = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        "total": result['total'],
+        "completed": result['completed'] or 0
+    })
 
 # ✅ 繼續上課
 @app.route('/continue_course', methods=['POST'])
