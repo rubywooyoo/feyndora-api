@@ -33,6 +33,10 @@ else:
 def get_db_connection():
     try:
         conn = mysql.connector.connect(**db_config, charset='utf8mb4')
+        cursor = conn.cursor()
+        # 設置數據庫時間為台灣時區
+        cursor.execute("SET time_zone = '+08:00'")
+        cursor.close()
         return conn
     except Error as e:
         print(f"資料庫連接錯誤: {e}")
@@ -75,8 +79,8 @@ def register():
 
     cursor.execute("""
         INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, account_created_at, avatar_id)
-        VALUES (%s, %s, %s, 0, 0, 0, NOW(), 1)
-    """, (username, email, hashed_password.decode('utf-8')))
+        VALUES (%s, %s, %s, 0, 0, 0, %s, 1)
+    """, (username, email, hashed_password.decode('utf-8'), get_taiwan_now()))
 
     conn.commit()
     return jsonify({"message": "註冊成功"}), 201
@@ -660,7 +664,7 @@ def add_course():
     cursor.execute("""
         INSERT INTO Courses (user_id, course_name, progress, progress_one_to_one, progress_classroom, current_stage, is_favorite, is_vr_ready, file_type, created_at)
         VALUES (%s, %s, 0, 0, 0, 'one_to_one', FALSE, 0, %s, NOW())
-    """, (data['user_id'], data['course_name'], data['file_type']))
+    """, (data['user_id'], data['course_name'], data['file_type'], get_taiwan_now()))
 
     conn.commit()
     return jsonify({"message": "課程已新增"}), 201
@@ -843,13 +847,13 @@ def continue_course():
         if not cursor.fetchone():
             return jsonify({"error": "課程不存在"}), 404
             
-        # 更新課程狀態
+        # 更新課程狀態，使用台灣時區
         cursor.execute("""
             UPDATE Courses
             SET is_vr_ready = TRUE, 
-                vr_started_at = NOW()
+                vr_started_at = %s
             WHERE course_id = %s
-        """, (course_id,))
+        """, (get_taiwan_now(), course_id))
         
         if cursor.rowcount == 0:
             return jsonify({"error": "更新課程狀態失敗"}), 500
@@ -1185,151 +1189,8 @@ def remove_course():
         return jsonify({"message": "課程已取消收藏"}), 200
     else:
         return jsonify({"error": "該課程未收藏或已刪除"}), 400
-        
+
 # ✅ 獲取課程回顧資料
-'''@app.route('/course_review/<int:course_id>', methods=['GET'])
-def get_course_review(course_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # 查詢課程評價資料
-    cursor.execute("""
-        SELECT accuracy_score, understanding_score, expression_score, interaction_score,
-               teacher_comment, student1_feedback, student2_feedback, student3_feedback
-        FROM CourseReviews
-        WHERE course_id = %s
-    """, (course_id,))
-    
-    review_data = cursor.fetchone()
-    
-    # 如果沒有找到評價資料，返回預設值
-    if not review_data:
-        review_data = {
-            "accuracy_score": 50,
-            "understanding_score": 50,
-            "expression_score": 50,
-            "interaction_score": 50,
-            "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解。",
-            "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
-            "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
-            "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。"
-        }
-
-    # 查詢課程積分
-    cursor.execute("""
-        SELECT earned_points
-        FROM CoursePointsLog
-        WHERE course_id = %s
-    """, (course_id,))
-    
-    points_data = cursor.fetchone()
-    earned_points = points_data['earned_points'] if points_data else 156  # 預設值
-
-    cursor.close()
-    conn.close()
-
-    # 組合回傳資料
-    response_data = {
-        **review_data,
-        "earned_points": earned_points
-    }
-
-    return jsonify(response_data)
-
-# ✅ 抽卡
-@app.route('/draw_card/<int:user_id>', methods=['POST'])
-def draw_card(user_id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "資料庫連接失敗"}), 500
-            
-        cursor = conn.cursor(dictionary=True)
-        
-        # 獲取抽卡類型（普通/高級）
-        draw_type = request.args.get('type', 'normal')
-        
-        # 獲取用戶當前資源
-        cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
-        user = cursor.fetchone()
-        
-        if not user:
-            return jsonify({"error": "用戶不存在"}), 404
-        
-        # 檢查資源是否足夠
-        if draw_type == 'normal' and user['coins'] < 500:
-            return jsonify({"error": "金幣不足"}), 400
-        elif draw_type == 'premium' and user['diamonds'] < 3:
-            return jsonify({"error": "鑽石不足"}), 400
-        
-        # 設定抽卡機率
-        if draw_type == 'normal':
-            probabilities = {
-                '絕密': 0.05,   # 絕密 5%
-                '機密': 0.25,  # 機密 25%
-                '隱密': 0.7   # 隱密 70%
-            }
-        else:
-            probabilities = {
-                '絕密': 0.15,   # 絕密 15%
-                '機密': 0.35,  # 機密 35%
-                '隱密': 0.5   # 隱密 50%
-            }
-        
-        # 隨機抽取卡片
-        import random
-        rarity = random.choices(list(probabilities.keys()), weights=list(probabilities.values()))[0]
-        
-        # 根據稀有度選擇卡片
-        cursor.execute("""
-            SELECT card_id, name, rarity 
-            FROM Cards 
-            WHERE rarity = %s 
-            ORDER BY RAND() 
-            LIMIT 1
-        """, (rarity,))
-        card = cursor.fetchone()
-        
-        if not card:
-            return jsonify({"error": "找不到對應稀有度的卡片"}), 500
-        
-        # 扣除資源
-        if draw_type == 'normal':
-            cursor.execute("UPDATE Users SET coins = coins - 500 WHERE user_id = %s", (user_id,))
-        else:
-            cursor.execute("UPDATE Users SET diamonds = diamonds - 3 WHERE user_id = %s", (user_id,))
-        
-        # 記錄抽卡結果（使用 UserCards 表）
-        cursor.execute("""
-            INSERT INTO UserCards (user_id, card_id, obtained_date)
-            VALUES (%s, %s, NOW())
-            ON DUPLICATE KEY UPDATE obtained_date = NOW()
-        """, (user_id, card['card_id']))
-        
-        # 獲取更新後的資源數量
-        cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
-        updated_user = cursor.fetchone()
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({
-            "success": True,
-            "card_id": card['card_id'],
-            "card_name": card['name'],
-            "rarity": card['rarity'],
-            "remaining_coins": updated_user['coins'],
-            "remaining_diamonds": updated_user['diamonds']
-        }), 200
-        
-    except Exception as e:
-        print(f"抽卡錯誤: {str(e)}")
-        if 'conn' in locals():
-            conn.rollback()
-            conn.close()
-        return jsonify({"error": "抽卡過程中發生錯誤"}), 500'''
-
 @app.route('/course_review/<int:course_id>', methods=['GET'])
 def get_course_review(course_id):
     conn = get_db_connection()
@@ -1482,11 +1343,12 @@ def draw_card(user_id):
             cursor.execute("UPDATE Users SET diamonds = diamonds - 3 WHERE user_id = %s", (user_id,))
         
         # 記錄抽卡結果（使用 UserCards 表）
+
         cursor.execute("""
             INSERT INTO UserCards (user_id, card_id, obtained_date)
-            VALUES (%s, %s, NOW())
-            ON DUPLICATE KEY UPDATE obtained_date = NOW()
-        """, (user_id, card['card_id']))
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE obtained_date = %s
+        """, (user_id, card['card_id'], get_taiwan_now(), get_taiwan_now()))
         
         # 獲取更新後的資源數量
         cursor.execute("SELECT coins, diamonds FROM Users WHERE user_id = %s", (user_id,))
@@ -1550,16 +1412,18 @@ def select_teacher_card():
         # 先将该用户所有卡片设置为未选中
         cursor.execute("""
             UPDATE UserCards 
-            SET is_selected = 0 
+            SET is_selected = 0,
+                updated_at = %s
             WHERE user_id = %s
-        """, (user_id,))
+        """, (get_taiwan_now(), user_id))
         
         # 将选中的卡片设置为已选中
         cursor.execute("""
             UPDATE UserCards 
-            SET is_selected = 1 
+            SET is_selected = 1,
+                updated_at = %s
             WHERE user_id = %s AND card_id = %s
-        """, (user_id, card_id))
+        """, (get_taiwan_now(), user_id, card_id))
         
         conn.commit()
         cursor.close()
