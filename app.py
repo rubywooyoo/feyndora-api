@@ -79,7 +79,7 @@ def register():
 
     cursor.execute("""
         INSERT INTO Users (username, email, password, total_learning_points, coins, diamonds, account_created_at, avatar_id)
-        VALUES (%s, %s, %s, 0, 0, 0, %s, 1)
+        VALUES (%s, %s, %s, 0, 0, 500, %s, 1)
     """, (username, email, hashed_password.decode('utf-8'), get_taiwan_now()))
 
     conn.commit()
