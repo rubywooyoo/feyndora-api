@@ -1399,7 +1399,7 @@ def get_user_cards(user_id):
     }), 200
 
 # ✅ 選擇老師卡片
-@app.route('/select_teacher_card', methods=['POST'])
+'''@app.route('/select_teacher_card', methods=['POST'])
 def select_teacher_card():
     data = request.json
     user_id = data.get('user_id')
@@ -1440,6 +1440,50 @@ def select_teacher_card():
         conn.close()
         return jsonify({
             "error": f"選擇老師卡片發生錯誤: {str(e)}"
+        }), 500'''
+
+# ✅ 選擇老師卡片
+@app.route('/select_teacher_card', methods=['POST'])
+def select_teacher_card():
+    data = request.json
+    user_id = data.get('user_id')
+    card_id = data.get('card_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 先将该用户所有卡片设置为未选中
+        cursor.execute("""
+            UPDATE UserCards 
+            SET is_selected = 0
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        # 将选中的卡片设置为已选中
+        cursor.execute("""
+            UPDATE UserCards 
+            SET is_selected = 1
+            WHERE user_id = %s AND card_id = %s
+        """, (user_id, card_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "message": "老師卡片選擇成功",
+            "selected_card_id": card_id,
+            "success": True
+        }), 200
+        
+    except Exception as e:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "error": f"選擇老師卡片發生錯誤: {str(e)}",
+            "success": False
         }), 500
 
 if __name__ == '__main__':
