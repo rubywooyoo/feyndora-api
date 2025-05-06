@@ -4,3 +4,4 @@ bcrypt
 flask-limiter
 gunicorn
 pytz
+flask_cors
