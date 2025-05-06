@@ -7,9 +7,11 @@ import pytz
 from datetime import datetime, date, timedelta
 from urllib.parse import urlparse
 import json
+from flask_cors import CORS  # ✅ 新增這一行
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
+CORS(app)  # ✅ 加這一行讓前端（Unity WebGL / Netlify）能存取 Flask API
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
