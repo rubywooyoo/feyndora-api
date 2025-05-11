@@ -1081,7 +1081,7 @@ def get_weekly_tasks(user_id):
     }), 200
 
 # ✅ 領取每週任務獎勵
-@app.route('/claim_weekly_task', methods=['POST'])
+'''@app.route('/claim_weekly_task', methods=['POST'])
 def claim_weekly_task():
     data = request.json
     user_id = data.get("user_id")
@@ -1109,6 +1109,64 @@ def claim_weekly_task():
         3: "SELECT weekly_streak AS completed FROM SigninRecords WHERE user_id = %s"
     }
     cursor.execute(task_conditions[task_id], (user_id, week_start))
+    completed = cursor.fetchone()["completed"]
+
+    if (task_id == 1 and completed < 5) or (task_id == 2 and completed < 1000) or (task_id == 3 and completed < 7):
+        return jsonify({"error": "任務尚未完成"}), 400
+
+    # 標記該任務已領取（設為 1）
+    cursor.execute("""
+        UPDATE WeeklyTasks SET is_claimed = 1
+        WHERE user_id = %s AND task_id = %s AND week_start = %s
+    """, (user_id, task_id, week_start))
+
+    # 給用戶加獎勵金幣（此處設定每個任務獎勵 1000 金幣，可依需求調整）
+    reward_coins = 1000
+    cursor.execute("UPDATE Users SET coins = coins + %s WHERE user_id = %s", (reward_coins, user_id))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "message": "成功領取獎勵！",
+        "task_id": task_id,
+        "reward_coins": reward_coins
+    }), 200'''
+
+# ✅ 領取每週任務獎勵
+@app.route('/claim_weekly_task', methods=['POST'])
+def claim_weekly_task():
+    data = request.json
+    user_id = data.get("user_id")
+    task_id = data.get("task_id")
+
+    if task_id not in [1, 2, 3]:
+        return jsonify({"error": "無效的任務 ID"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    week_start = get_week_range()[0]
+
+    # 確保有 WeeklyTasks 記錄（若無則插入預設 0）
+    cursor.execute("""
+        INSERT INTO WeeklyTasks (user_id, task_id, week_start, is_claimed)
+        VALUES (%s, %s, %s, 0)
+        ON DUPLICATE KEY UPDATE is_claimed = is_claimed
+    """, (user_id, task_id, week_start))
+    conn.commit()
+
+    # 檢查是否達標（依據不同任務條件）
+    task_conditions = {
+        1: "SELECT COUNT(*) AS completed FROM Courses WHERE user_id = %s AND progress = 100 AND updated_at >= %s",
+        2: "SELECT COALESCE(SUM(daily_points), 0) AS completed FROM LearningPointsLog WHERE user_id = %s AND date >= %s",
+        3: "SELECT weekly_streak AS completed FROM SigninRecords WHERE user_id = %s"
+    }
+    # 根據 task_id 決定傳入幾個參數
+    if task_id == 3:
+        cursor.execute(task_conditions[task_id], (user_id,))
+    else:
+        cursor.execute(task_conditions[task_id], (user_id, week_start))
     completed = cursor.fetchone()["completed"]
 
     if (task_id == 1 and completed < 5) or (task_id == 2 and completed < 1000) or (task_id == 3 and completed < 7):
