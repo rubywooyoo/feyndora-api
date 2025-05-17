@@ -642,50 +642,56 @@ def finish_course():
             
         cursor = conn.cursor()
         
-        # 1. 先檢查課程是否存在
-        cursor.execute("SELECT 1 FROM Courses WHERE course_id = %s", (course_id,))
-        if not cursor.fetchone():
-            return jsonify({"error": "課程不存在"}), 404
+        try:
+            # 1. 先檢查課程是否存在
+            cursor.execute("SELECT 1 FROM Courses WHERE course_id = %s", (course_id,))
+            if not cursor.fetchone():
+                return jsonify({"error": "課程不存在"}), 404
 
-        # 2. 強制將所有章節標記為完成
-        cursor.execute("""
-            UPDATE CourseChapters 
-            SET is_completed = 1,
-                updated_at = NOW()
-            WHERE course_id = %s
-        """, (course_id,))
+            # 2. 強制將所有章節標記為完成（移除 updated_at）
+            cursor.execute("""
+                UPDATE CourseChapters 
+                SET is_completed = 1
+                WHERE course_id = %s
+            """, (course_id,))
 
-        # 3. 更新課程狀態
-        cursor.execute("""
-            UPDATE Courses 
-            SET current_stage = 'completed',
-                progress = 100,
-                progress_one_to_one = 100,
-                progress_classroom = 100,
-                is_vr_ready = 0,
-                vr_finished_at = NOW(),
-                updated_at = NOW()
-            WHERE course_id = %s
-        """, (course_id,))
+            # 3. 更新課程狀態
+            cursor.execute("""
+                UPDATE Courses 
+                SET current_stage = 'completed',
+                    progress = 100,
+                    progress_one_to_one = 100,
+                    progress_classroom = 100,
+                    is_vr_ready = 0,
+                    vr_finished_at = NOW()
+                WHERE course_id = %s
+            """, (course_id,))
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+            conn.commit()
+            
+            return jsonify({
+                "message": "課程已成功結束",
+                "course_id": course_id,
+                "status": "completed",
+                "progress": 100
+            }), 200
 
-        return jsonify({
-            "message": "課程已成功結束",
-            "course_id": course_id,
-            "status": "completed",
-            "progress": 100
-        }), 200
+        except Exception as db_error:
+            print(f"資料庫操作錯誤: {str(db_error)}")
+            conn.rollback()
+            raise
+            
+        finally:
+            cursor.close()
+            conn.close()
 
     except Exception as e:
         print(f"結束課程錯誤: {str(e)}")
         if 'conn' in locals():
             conn.rollback()
             conn.close()
-        return jsonify({"error": f"結束課程時發生錯誤: {str(e)}"}), 500 
-
+        return jsonify({"error": f"結束課程時發生錯誤: {str(e)}"}), 500
+        
 # ✅ 課程列表
 @app.route('/courses/<int:user_id>', methods=['GET'])
 def get_courses(user_id):
