@@ -1291,37 +1291,90 @@ def remove_course():
 # ✅ 獲取課程回顧資料
 @app.route('/course_review/<int:course_id>', methods=['GET'])
 def get_course_review(course_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
+    print(f"🔍 开始获取课程回顾数据 - CourseID: {course_id}")
+    conn = None
+    cursor = None
+    
     try:
-        # 查詢課程評價資料（包含重點回顧）
+        conn = get_db_connection()
+        if not conn:
+            print("❌ 数据库连接失败")
+            return jsonify({"error": "数据库连接失败"}), 500
+            
+        cursor = conn.cursor(dictionary=True)
+        
+        # 检查课程是否存在，并获取 user_id
+        cursor.execute("""
+            SELECT course_id, user_id 
+            FROM Courses 
+            WHERE course_id = %s
+        """, (course_id,))
+        course = cursor.fetchone()
+        
+        if not course:
+            print(f"❌ 课程不存在 - CourseID: {course_id}")
+            return jsonify({"error": "课程不存在"}), 404
+
+        print(f"✅ 找到课程信息 - CourseID: {course_id}, UserID: {course['user_id']}")
+
+        # 查询课程评价数据
         cursor.execute("""
             SELECT accuracy_score, understanding_score, expression_score, interaction_score,
                    teacher_comment, student1_feedback, student2_feedback, student3_feedback,
                    good_points, improvement_points
             FROM CourseReviews
-            WHERE course_id = %s
-        """, (course_id,))
+            WHERE course_id = %s AND user_id = %s
+        """, (course_id, course['user_id']))
         
         review_data = cursor.fetchone()
+        print(f"📊 评价数据查询结果: {review_data}")
         
-        # 如果沒有找到評價資料，返回預設值
+        # 如果没有找到评价数据，使用默认值
         if not review_data:
-            review_data = {
-                "accuracy_score": 50,
-                "understanding_score": 50,
-                "expression_score": 50,
-                "interaction_score": 50,
-                "teacher_comment": "今天的表現非常出色，特別是在概念解釋方面有明顯進步。你對核心理論的掌握度很高，建議下次可以多舉一些生活中的例子，讓概念更容易理解。",
-                "student1_feedback": "你把複雜的概念講得很清楚！尤其是在解釋那個難懂的部分時，用了很好的比喻，讓我一下就理解了。",
-                "student2_feedback": "我覺得你的邏輯思維很清晰，解題過程也很有條理。如果能多分享一些實際應用的場景就更好了。",
-                "student3_feedback": "你提出的觀點很有創意！讓我看到這個理論的新角度。期待下次能聽到更多你的想法。",
-                "good_points": ["概念解釋清晰準確", "舉例生動有趣", "與同學互動熱絡"],
-                "improvement_points": ["可以多分享實際應用場景", "建議控制節奏，不要說太快"]
-            }
+            print("⚠️ 未找到评价数据，使用默认值")
+            # 插入默认评价数据
+            try:
+                default_review = {
+                    "accuracy_score": 50,
+                    "understanding_score": 50,
+                    "expression_score": 50,
+                    "interaction_score": 50,
+                    "teacher_comment": "今天的表现非常出色，特别是在概念解释方面有明显进步。你对核心理论的掌握度很高，建议下次可以多举一些生活中的例子，让概念更容易理解。",
+                    "student1_feedback": "你把复杂的概念讲得很清楚！尤其是在解释那个难懂的部分时，用了很好的比喻，让我一下就理解了。",
+                    "student2_feedback": "我觉得你的逻辑思维很清晰，解题过程也很有条理。如果能多分享一些实际应用的场景就更好了。",
+                    "student3_feedback": "你提出的观点很有创意！让我看到这个理论的新角度。期待下次能听到更多你的想法。",
+                    "good_points": json.dumps(["概念解释清晰准确", "举例生动有趣", "与同学互动热络"]),
+                    "improvement_points": json.dumps(["可以多分享实际应用场景", "建议控制节奏，不要说太快"])
+                }
+                
+                cursor.execute("""
+                    INSERT INTO CourseReviews 
+                    (course_id, user_id, accuracy_score, understanding_score, expression_score, 
+                     interaction_score, teacher_comment, student1_feedback, student2_feedback, 
+                     student3_feedback, good_points, improvement_points)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    course_id, course['user_id'],
+                    default_review["accuracy_score"],
+                    default_review["understanding_score"],
+                    default_review["expression_score"],
+                    default_review["interaction_score"],
+                    default_review["teacher_comment"],
+                    default_review["student1_feedback"],
+                    default_review["student2_feedback"],
+                    default_review["student3_feedback"],
+                    default_review["good_points"],
+                    default_review["improvement_points"]
+                ))
+                conn.commit()
+                print("✅ 已插入默认评价数据")
+                review_data = default_review
+            except Exception as e:
+                print(f"❌ 插入默认评价数据失败: {str(e)}")
+                return jsonify({"error": "创建默认评价数据失败"}), 500
 
-        # 查詢課程積分
+        print("✅ 开始查询课程积分")
+        # 查询课程积分
         cursor.execute("""
             SELECT earned_points
             FROM CoursePointsLog
@@ -1330,8 +1383,9 @@ def get_course_review(course_id):
         
         points_data = cursor.fetchone()
         earned_points = points_data['earned_points'] if points_data else 156
+        print(f"📈 积分数据: {earned_points}")
 
-        # 處理 JSON 欄位
+        # 处理 JSON 字段
         good_points = []
         improvement_points = []
         
@@ -1340,12 +1394,12 @@ def get_course_review(course_id):
                 good_points = json.loads(review_data['good_points'])
             if review_data.get('improvement_points'):
                 improvement_points = json.loads(review_data['improvement_points'])
-        except json.JSONDecodeError:
-            # 如果 JSON 解析失敗，使用空陣列
+        except json.JSONDecodeError as e:
+            print(f"⚠️ JSON 解析错误: {str(e)}")
             good_points = []
             improvement_points = []
 
-        # 組合回傳資料
+        # 组合返回数据
         response_data = {
             "accuracy_score": review_data.get("accuracy_score", 50),
             "understanding_score": review_data.get("understanding_score", 50),
@@ -1360,15 +1414,22 @@ def get_course_review(course_id):
             "improvement_points": improvement_points
         }
 
+        print("✅ 成功获取课程回顾数据")
         return jsonify(response_data)
 
     except Exception as e:
-        print(f"Error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ 获取课程回顾数据时发生错误: {str(e)}")
+        if 'conn' in locals() and conn.is_connected():
+            conn.rollback()
+        return jsonify({"error": f"获取课程回顾数据时发生错误: {str(e)}"}), 500
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+        print("✅ 数据库连接已关闭")
+        
 # ✅ 抽卡
 @app.route('/draw_card/<int:user_id>', methods=['POST'])
 def draw_card(user_id):
