@@ -630,23 +630,61 @@ def get_latest_course(user_id):
 # ✅ VR結束課程時更新current_stage
 @app.route('/finish_course', methods=['POST'])
 def finish_course():
-    data = request.json
-    course_id = data['course_id']
-    current_stage = data['current_stage']
+    try:
+        data = request.json
+        if not data or 'course_id' not in data:
+            return jsonify({"error": "缺少必要參數"}), 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE Courses
-        SET current_stage = %s, vr_finished_at = NOW()
-        WHERE course_id = %s
-    """, (current_stage, course_id))
-    
-    conn.commit()
+        course_id = data['course_id']
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "資料庫連接失敗"}), 500
+            
+        cursor = conn.cursor()
+        
+        # 1. 先檢查課程是否存在
+        cursor.execute("SELECT 1 FROM Courses WHERE course_id = %s", (course_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "課程不存在"}), 404
 
-    cursor.close()
-    conn.close()
-    return jsonify({"message": "課程進度已更新"}), 200
+        # 2. 強制將所有章節標記為完成
+        cursor.execute("""
+            UPDATE CourseChapters 
+            SET is_completed = 1,
+                updated_at = NOW()
+            WHERE course_id = %s
+        """, (course_id,))
+
+        # 3. 更新課程狀態
+        cursor.execute("""
+            UPDATE Courses 
+            SET current_stage = 'completed',
+                progress = 100,
+                progress_one_to_one = 100,
+                progress_classroom = 100,
+                is_vr_ready = 0,
+                vr_finished_at = NOW(),
+                updated_at = NOW()
+            WHERE course_id = %s
+        """, (course_id,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "message": "課程已成功結束",
+            "course_id": course_id,
+            "status": "completed",
+            "progress": 100
+        }), 200
+
+    except Exception as e:
+        print(f"結束課程錯誤: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return jsonify({"error": f"結束課程時發生錯誤: {str(e)}"}), 500 
 
 # ✅ 課程列表
 @app.route('/courses/<int:user_id>', methods=['GET'])
