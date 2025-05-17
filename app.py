@@ -648,14 +648,14 @@ def finish_course():
             if not cursor.fetchone():
                 return jsonify({"error": "課程不存在"}), 404
 
-            # 2. 強制將所有章節標記為完成（移除 updated_at）
+            # 2. 強制將所有章節標記為完成
             cursor.execute("""
                 UPDATE CourseChapters 
                 SET is_completed = 1
                 WHERE course_id = %s
             """, (course_id,))
 
-            # 3. 更新課程狀態
+            # 3. 更新課程狀態（只使用資料庫中實際存在的欄位）
             cursor.execute("""
                 UPDATE Courses 
                 SET current_stage = 'completed',
@@ -663,7 +663,7 @@ def finish_course():
                     progress_one_to_one = 100,
                     progress_classroom = 100,
                     is_vr_ready = 0,
-                    vr_finished_at = NOW()
+                    updated_at = NOW()
                 WHERE course_id = %s
             """, (course_id,))
 
@@ -678,16 +678,19 @@ def finish_course():
 
         except Exception as db_error:
             print(f"資料庫操作錯誤: {str(db_error)}")
-            conn.rollback()
+            if 'conn' in locals() and conn.is_connected():
+                conn.rollback()
             raise
             
         finally:
-            cursor.close()
-            conn.close()
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals() and conn.is_connected():
+                conn.close()
 
     except Exception as e:
         print(f"結束課程錯誤: {str(e)}")
-        if 'conn' in locals():
+        if 'conn' in locals() and conn.is_connected():
             conn.rollback()
             conn.close()
         return jsonify({"error": f"結束課程時發生錯誤: {str(e)}"}), 500
