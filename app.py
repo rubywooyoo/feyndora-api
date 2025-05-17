@@ -1301,11 +1301,12 @@ def get_course_review(course_id):
             print("❌ 数据库连接失败")
             return jsonify({"error": "数据库连接失败"}), 500
             
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True, buffered=True)  # 使用 buffered cursor
         
         # 检查课程是否存在，并获取 user_id
+        print(f"🔍 查询课程信息 - CourseID: {course_id}")
         cursor.execute("""
-            SELECT course_id, user_id 
+            SELECT course_id, user_id, course_name 
             FROM Courses 
             WHERE course_id = %s
         """, (course_id,))
@@ -1315,13 +1316,14 @@ def get_course_review(course_id):
             print(f"❌ 课程不存在 - CourseID: {course_id}")
             return jsonify({"error": "课程不存在"}), 404
 
-        print(f"✅ 找到课程信息 - CourseID: {course_id}, UserID: {course['user_id']}")
+        print(f"✅ 找到课程信息 - CourseID: {course_id}, UserID: {course['user_id']}, CourseName: {course['course_name']}")
 
         # 查询课程评价数据
+        print(f"🔍 查询课程评价数据 - CourseID: {course_id}, UserID: {course['user_id']}")
         cursor.execute("""
             SELECT accuracy_score, understanding_score, expression_score, interaction_score,
                    teacher_comment, student1_feedback, student2_feedback, student3_feedback,
-                   good_points, improvement_points
+                   good_points, improvement_points, review_id
             FROM CourseReviews
             WHERE course_id = %s AND user_id = %s
         """, (course_id, course['user_id']))
@@ -1331,8 +1333,7 @@ def get_course_review(course_id):
         
         # 如果没有找到评价数据，使用默认值
         if not review_data:
-            print("⚠️ 未找到评价数据，使用默认值")
-            # 插入默认评价数据
+            print(f"⚠️ 未找到评价数据，尝试创建默认评价 - CourseID: {course_id}, UserID: {course['user_id']}")
             try:
                 default_review = {
                     "accuracy_score": 50,
@@ -1347,6 +1348,7 @@ def get_course_review(course_id):
                     "improvement_points": json.dumps(["可以多分享实际应用场景", "建议控制节奏，不要说太快"])
                 }
                 
+                print("📝 准备插入默认评价数据")
                 cursor.execute("""
                     INSERT INTO CourseReviews 
                     (course_id, user_id, accuracy_score, understanding_score, expression_score, 
@@ -1371,7 +1373,10 @@ def get_course_review(course_id):
                 review_data = default_review
             except Exception as e:
                 print(f"❌ 插入默认评价数据失败: {str(e)}")
-                return jsonify({"error": "创建默认评价数据失败"}), 500
+                print(f"❌ 错误详情: {type(e).__name__}")
+                if hasattr(e, 'args'):
+                    print(f"❌ 错误参数: {e.args}")
+                return jsonify({"error": f"创建默认评价数据失败: {str(e)}"}), 500
 
         print("✅ 开始查询课程积分")
         # 查询课程积分
@@ -1396,6 +1401,8 @@ def get_course_review(course_id):
                 improvement_points = json.loads(review_data['improvement_points'])
         except json.JSONDecodeError as e:
             print(f"⚠️ JSON 解析错误: {str(e)}")
+            print(f"⚠️ good_points 原始数据: {review_data.get('good_points')}")
+            print(f"⚠️ improvement_points 原始数据: {review_data.get('improvement_points')}")
             good_points = []
             improvement_points = []
 
@@ -1419,16 +1426,23 @@ def get_course_review(course_id):
 
     except Exception as e:
         print(f"❌ 获取课程回顾数据时发生错误: {str(e)}")
+        print(f"❌ 错误类型: {type(e).__name__}")
+        if hasattr(e, 'args'):
+            print(f"❌ 错误参数: {e.args}")
         if 'conn' in locals() and conn.is_connected():
             conn.rollback()
         return jsonify({"error": f"获取课程回顾数据时发生错误: {str(e)}"}), 500
 
     finally:
-        if cursor:
-            cursor.close()
-        if conn and conn.is_connected():
-            conn.close()
-        print("✅ 数据库连接已关闭")
+        try:
+            if cursor:
+                cursor.close()
+            if conn and conn.is_connected():
+                conn.close()
+            print("✅ 数据库连接已关闭")
+        except Exception as e:
+            print(f"⚠️ 关闭数据库连接时发生错误: {str(e)}")
+            # 不抛出异常，因为这是在 finally 块中 
         
 # ✅ 抽卡
 @app.route('/draw_card/<int:user_id>', methods=['POST'])
